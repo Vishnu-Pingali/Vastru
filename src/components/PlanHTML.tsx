@@ -8,7 +8,7 @@ import { getRoomLabel } from '../utils/vastuUtils';
 import { getRoomColor } from '../utils/vastuUtils';
 
 export function PlanHTML() {
-    const { plot, rooms, moveRoom, selectRoom, selectedRoomId, viewMode, setStageRef } = useStore();
+    const { plot, rooms, updateRoom, selectRoom, selectedRoomId, editMode, setStageRef } = useStore();
     const containerRef = useRef<HTMLDivElement>(null);
     const [draggingInfo, setDraggingInfo] = useState<{ id: string; startX: number; startY: number; initialRoomX: number; initialRoomY: number } | null>(null);
 
@@ -30,7 +30,7 @@ export function PlanHTML() {
 
         // Only allow drag in interactive mode or if we decide blueprint is editable
         // The user wants "layout plan like this", usually static-ish, but let's allow edit.
-        if (viewMode === 'interactive' || true) {
+        if (editMode === 'creative' || true) {
             setDraggingInfo({
                 id: roomId,
                 startX: e.clientX,
@@ -57,7 +57,7 @@ export function PlanHTML() {
         if (room) {
             const constrainedX = Math.max(0, Math.min(newX, plot.width - room.width));
             const constrainedY = Math.max(0, Math.min(newY, plot.height - room.height));
-            moveRoom(draggingInfo.id, constrainedX, constrainedY);
+            updateRoom(draggingInfo.id, { x: constrainedX, y: constrainedY });
         }
     };
 

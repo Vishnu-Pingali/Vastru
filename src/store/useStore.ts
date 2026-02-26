@@ -2,6 +2,7 @@
 // Zustand store for VāstuCAD - Template-driven architecture
 
 import { create } from 'zustand';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import type Konva from 'konva';
 import type {
     Room,
@@ -116,35 +117,59 @@ export const useStore = create<StoreState>((set, get) => ({
         get().showToastMessage(`Loaded: ${template.name}`);
     },
 
-    /**
-     * Generate a dynamic layout based on room requirements via Gemini AI
-     */
     generateDynamicLayout: async (roomReqs) => {
         const { plot, showToastMessage } = get();
 
         showToastMessage('🤖 Generating AI Layout...');
 
         try {
-            const response = await fetch('http://localhost:8000/generate-ai', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    plot: {
-                        width: plot.width,
-                        height: plot.height,
-                        orientation: plot.orientation
-                    },
-                    rooms: roomReqs
-                })
-            });
+            // Define API key directly or prompt user (using a placeholder or import.meta.env)
+            // @ts-ignore
+            const apiKey = import.meta.env.VITE_GEMINI_API_KEY || prompt("Enter your Gemini API key:");
+            if (!apiKey) throw new Error("Gemini API key is required to generate AI layouts.");
 
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.detail || 'Failed to generate plan');
+            const genAI = new GoogleGenerativeAI(apiKey);
+            const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+
+            const promptText = `
+                You are an expert Vastu Shastra architect and floor plan designer. I need a JSON structure for a complete, solid, monolithic floor plan based on these constraints:
+                Plot: ${plot.width}m x ${plot.height}m, facing ${plot.orientation} degrees.
+                Rooms required: ${JSON.stringify(roomReqs)}
+                
+                CRITICAL ARCHITECTURAL RULES:
+                1. SOLID FOOTPRINT: Design a single rectangular building (e.g. 10x8) starting exactly at (x:0, y:0).
+                2. NO GAPS: Rooms MUST pack perfectly into this building footprint like a jigsaw puzzle. There MUST NOT be any empty space or corridors between rooms.
+                3. GRID SNAPPING: All x, y, width, and height values MUST be whole numbers or end in .5 (e.g., 2, 3.5, 4).
+                4. WALL ENCLOSURE: Generate walls that trace every single external border of the building layout AND the interior borders between rooms. Ensure no walls intersect incorrectly.
+                5. VASTU COMPLIANCE: Place Master Bedroom in SW, Kitchen in SE, etc., but respect the contiguous puzzle-layout rule above all.
+                
+                Respond ONLY with valid JSON in this exact format:
+                {
+                    "score": 85,
+                    "rooms": [
+                        { "id": "room_id", "label": "Label", "type": "master_bedroom", "x": 0, "y": 0, "width": 4, "height": 4, "zone": "SW", "score": 100, "violation": null }
+                    ],
+                    "walls": [
+                        { "id": "w1", "start": {"x":0, "y":0}, "end": {"x":4, "y":0}, "thickness": 0.23, "isExternal": true, "adjacentRooms": [] }
+                    ],
+                    "doors": [
+                        { "id": "d1", "wallId": "w1", "position": 0.5, "width": 0.9, "swingAngle": 90, "swingDirection": "left" }
+                    ]
+                }
+                Make sure the walls completely enclose the rooms. Do NOT include markdown code blocks, just raw JSON.`;
+            const result = await model.generateContent(promptText);
+            const responseText = result.response.text().trim();
+            // Remove markdown format if it wrapped it
+            const cleanedJsonText = responseText.replace(/```json/i, '').replace(/```/g, '').trim();
+            console.log("Raw Gemini Response:", cleanedJsonText);
+
+            let plan;
+            try {
+                plan = JSON.parse(cleanedJsonText);
+            } catch (e) {
+                console.error("Failed to parse Gemini JSON", e);
+                throw new Error("Gemini returned invalid JSON format.");
             }
-
-            const plan = await response.json();
-
             // Create a synthetic template from Gemini AI plan
             const syntheticTemplate: PlanTemplate = {
                 id: 'ai-template',
@@ -192,9 +217,18 @@ export const useStore = create<StoreState>((set, get) => ({
             });
 
             showToastMessage('✨ AI Plan Generated!');
-        } catch (error) {
+        } catch (error: any) {
             console.error('AI Generator Error:', error);
-            showToastMessage('⚠️ AI generator unavailable. Using fallback.');
+
+            // @ts-ignore
+            const apiKey = import.meta.env.VITE_GEMINI_API_KEY || "";
+            if (apiKey === 'your_api_key_here') {
+                showToastMessage('⚠️ Please add your actual Gemini API key to the .env file!');
+                return;
+            }
+
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            showToastMessage(`⚠️ AI Failed: ${errorMessage.substring(0, 150)}`);
 
             // Fallback to local JS generation if Python fails
             const { rooms, compliance, walls, doors } = generateLayout(plot, roomReqs);

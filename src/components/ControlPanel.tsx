@@ -74,53 +74,57 @@ export function ControlPanel() {
     const complianceStatus = getComplianceStatus(complianceReport.totalScore);
 
     return (
-        <aside className="w-96 bg-white rounded-lg shadow-lg p-5 space-y-5 border border-gray-200 h-fit max-h-screen overflow-y-auto">
+        <aside className="w-[380px] glass-card p-6 space-y-6 flex flex-col h-fit max-h-[90vh] overflow-y-auto overflow-x-hidden relative">
             {/* Header */}
-            <div className="flex items-center gap-3 pb-4 border-b border-gray-200">
-                <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-slate-700 to-gray-900 flex items-center justify-center text-white text-2xl">
-                    🏛️
+            <div className="flex items-center gap-4 pb-4 border-b border-white/10">
+                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-2xl shadow-lg shadow-indigo-500/30 ring-2 ring-white/20">
+                    ✨
                 </div>
                 <div>
-                    <h1 className="text-xl font-bold text-gray-900">VāstuCAD</h1>
-                    <p className="text-xs text-gray-500">Civil-grade planning tool</p>
+                    <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">Controls</h1>
+                    <p className="text-xs text-indigo-300 tracking-wider">AESTHETIC & AI DRIVEN</p>
                 </div>
             </div>
 
             {/* Template Selection */}
             <div className="space-y-3">
-                <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Template</h2>
+                <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Topology Template</h2>
 
                 <select
                     value={activeTemplate?.id || ''}
                     onChange={(e) => e.target.value && loadTemplate(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none text-sm"
+                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none text-sm text-slate-200 backdrop-blur-md transition-all hover:bg-white/10 appearance-none"
                 >
-                    <option value="">Select a template...</option>
+                    <option value="" className="bg-slate-900 text-white">Select a baseline template...</option>
                     {templates.map((template) => (
-                        <option key={template.id} value={template.id}>
-                            {template.name} ({template.bedrooms}BHK - {template.facing})
+                        <option key={template.id} value={template.id} className="bg-slate-900 text-white py-2">
+                            {template.name} ({template.bedrooms}BHK - {template.facing} Facing)
                         </option>
                     ))}
                 </select>
 
                 {activeTemplate && (
-                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs space-y-1">
-                        <div className="font-semibold text-slate-900">{activeTemplate.name}</div>
-                        <div className="text-slate-600">{activeTemplate.description}</div>
-                        <div className="text-slate-500">
-                            {activeTemplate.bedrooms}BHK • {activeTemplate.facing} Facing • {activeTemplate.rooms.length} rooms
+                    <div className="p-4 bg-indigo-900/20 border border-indigo-500/20 rounded-xl text-xs space-y-2 backdrop-blur-md">
+                        <div className="font-bold text-indigo-200 text-sm flex items-center gap-2">
+                            <span className="w-2 h-2 rounded-full bg-indigo-400"></span> {activeTemplate.name}
+                        </div>
+                        <div className="text-slate-400 leading-relaxed">{activeTemplate.description}</div>
+                        <div className="flex items-center gap-3 pt-2 text-indigo-300 font-medium">
+                            <span>🛏️ {activeTemplate.bedrooms}BHK</span>
+                            <span>🧭 {activeTemplate.facing} Facing</span>
+                            <span>📐 {activeTemplate.rooms.length} Rooms</span>
                         </div>
                     </div>
                 )}
             </div>
 
             {/* Plot Settings */}
-            <div className="space-y-3">
-                <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Plot Settings</h2>
+            <div className="space-y-4">
+                <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Plot Dimensions</h2>
 
-                <div className="grid grid-cols-2 gap-3">
-                    <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">Width (m)</label>
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="relative">
+                        <label className="block text-[10px] font-semibold text-slate-400 mb-1.5 uppercase tracking-wider absolute top-2 left-3 z-10">Width</label>
                         <input
                             type="number"
                             value={plot.width}
@@ -128,11 +132,12 @@ export function ControlPanel() {
                             min={8}
                             max={50}
                             step={0.5}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none text-sm"
+                            className="w-full pl-3 pr-8 pt-6 pb-2 bg-white/5 border border-white/10 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm text-white font-medium hover:bg-white/10 transition-all font-mono"
                         />
+                        <span className="absolute right-3 top-6 text-xs text-slate-500 font-mono">m</span>
                     </div>
-                    <div>
-                        <label className="block text-xs font-medium text-gray-600 mb-1">Height (m)</label>
+                    <div className="relative">
+                        <label className="block text-[10px] font-semibold text-slate-400 mb-1.5 uppercase tracking-wider absolute top-2 left-3 z-10">Length</label>
                         <input
                             type="number"
                             value={plot.height}
@@ -140,125 +145,122 @@ export function ControlPanel() {
                             min={8}
                             max={50}
                             step={0.5}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none text-sm"
+                            className="w-full pl-3 pr-8 pt-6 pb-2 bg-white/5 border border-white/10 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm text-white font-medium hover:bg-white/10 transition-all font-mono"
                         />
+                        <span className="absolute right-3 top-6 text-xs text-slate-500 font-mono">m</span>
                     </div>
                 </div>
 
-                <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-1">
-                        Orientation: {plot.orientation}°
-                    </label>
+                <div className="bg-white/5 p-4 rounded-xl border border-white/10">
+                    <div className="flex justify-between items-center mb-3">
+                        <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                            Compass
+                        </label>
+                        <span className="text-sm font-bold text-indigo-300 font-mono bg-indigo-900/30 px-2 py-0.5 rounded">{plot.orientation}°</span>
+                    </div>
                     <input
                         type="range"
                         min={0}
                         max={359}
                         value={plot.orientation}
                         onChange={(e) => setOrientation(Number(e.target.value))}
-                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-gray-700"
+                        className="w-full h-1.5 bg-slate-700/50 rounded-lg appearance-none cursor-pointer accent-indigo-500 hover:accent-indigo-400 transition-all"
                     />
-                    <div className="flex justify-between text-xs text-gray-500 mt-1">
-                        <span>0° (N)</span>
-                        <span>90° (E)</span>
-                        <span>180° (S)</span>
-                        <span>270° (W)</span>
+                    <div className="flex justify-between text-[10px] font-bold text-slate-500 mt-2 uppercase tracking-widest">
+                        <span className={plot.orientation < 45 || plot.orientation > 315 ? 'text-indigo-400' : ''}>N(0)</span>
+                        <span className={plot.orientation >= 45 && plot.orientation < 135 ? 'text-indigo-400' : ''}>E(90)</span>
+                        <span className={plot.orientation >= 135 && plot.orientation < 225 ? 'text-indigo-400' : ''}>S(180)</span>
+                        <span className={plot.orientation >= 225 && plot.orientation <= 315 ? 'text-indigo-400' : ''}>W(270)</span>
                     </div>
                 </div>
             </div>
 
             {/* Edit Mode */}
-            <div className="space-y-2">
-                <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Edit Mode</h2>
-                <div className="flex bg-gray-100 rounded-lg p-1 border border-gray-200">
+            <div className="space-y-3">
+                <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Interaction Mode</h2>
+                <div className="flex bg-black/40 rounded-xl p-1 border border-white/10 shadow-inner">
                     <button
                         onClick={() => setEditMode('template')}
                         disabled={!activeTemplate}
-                        className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${editMode === 'template'
-                            ? 'bg-white text-gray-900 shadow-sm'
-                            : 'text-gray-500 hover:text-gray-700'
-                            } disabled:opacity-50 disabled:cursor-not-allowed`}
+                        className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all tracking-wider uppercase ${editMode === 'template'
+                            ? 'bg-gradient-to-r from-indigo-600 to-indigo-500 text-white shadow-lg shadow-indigo-500/20'
+                            : 'text-slate-500 hover:text-slate-300 hover:bg-white/5'
+                            } disabled:opacity-30 disabled:cursor-not-allowed`}
                     >
-                        🔒 Template
+                        [ Rigid ]
                     </button>
                     <button
                         onClick={() => setEditMode('creative')}
                         disabled={!activeTemplate}
-                        className={`flex-1 py-1.5 text-xs font-medium rounded-md transition-all ${editMode === 'creative'
-                            ? 'bg-white text-gray-900 shadow-sm'
-                            : 'text-gray-500 hover:text-gray-700'
-                            } disabled:opacity-50 disabled:cursor-not-allowed`}
+                        className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all tracking-wider uppercase ${editMode === 'creative'
+                            ? 'bg-gradient-to-r from-purple-600 to-pink-500 text-white shadow-lg shadow-purple-500/20'
+                            : 'text-slate-500 hover:text-slate-300 hover:bg-white/5'
+                            } disabled:opacity-30 disabled:cursor-not-allowed`}
                     >
-                        🎨 Creative
+                        [ Fluid ]
                     </button>
                 </div>
-                <p className="text-xs text-gray-500">
-                    {editMode === 'template'
-                        ? 'Resize rooms within limits'
-                        : 'Move walls (advanced)'}
-                </p>
             </div>
 
-            {/* Separation/Whitespace */}
-            <div className="py-2"></div>
+            <hr className="border-white/10 border-t-2" />
 
             {/* Vastu Mode */}
-            <div className="space-y-2">
-                <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Vastu Mode</h2>
+            <div className="space-y-3">
+                <h2 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex justify-between items-center">
+                    <span>Vastu Engine</span>
+                    <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse"></span>
+                </h2>
                 <select
                     value={vastuMode}
                     onChange={(e) => setVastuMode(e.target.value as any)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-gray-500 focus:border-transparent outline-none text-sm"
+                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent outline-none text-sm text-slate-200 appearance-none font-medium hover:bg-white/10 transition-colors"
                 >
-                    <option value="strict">Strict (Block forbidden placements)</option>
-                    <option value="soft">Soft (Warn but allow)</option>
-                    <option value="off">Off (No validation)</option>
+                    <option value="strict" className="bg-slate-900">Strict Enforcement 🔴</option>
+                    <option value="soft" className="bg-slate-900">Soft Guidelines 🟡</option>
+                    <option value="off" className="bg-slate-900">Disabled ⚪</option>
                 </select>
             </div>
 
             {/* Actions */}
-            <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-3">
                 <button
                     onClick={clearAll}
                     disabled={!activeTemplate}
-                    className="w-full px-4 py-2 border border-red-300 text-red-600 rounded-lg hover:bg-red-50 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="col-span-2 px-4 py-3 bg-white/5 border border-red-500/30 text-red-400 rounded-xl hover:bg-red-500/10 transition-all text-sm font-bold tracking-wider uppercase disabled:opacity-30 disabled:cursor-not-allowed"
                 >
-                    Clear Template
+                    Clear Workspace
                 </button>
             </div>
 
-            {/* Export/Import */}
-            <div className="space-y-2">
-                <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">Export / Import</h2>
-
-                <div className="relative">
+            <div className="grid grid-cols-2 gap-3 mt-4">
+                <div className="relative col-span-1">
                     <button
                         onClick={() => setShowExportMenu(!showExportMenu)}
                         disabled={!activeTemplate}
-                        className="w-full px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full px-4 py-3 bg-indigo-600 border border-indigo-400/50 rounded-xl hover:bg-indigo-500 transition-all text-sm font-bold flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 disabled:opacity-30 text-white uppercase tracking-wider"
                     >
-                        <span>📥</span>
-                        <span>Export Plan</span>
+                        <span>📥 Export</span>
                     </button>
 
                     {showExportMenu && (
-                        <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg z-10">
+                        <div className="absolute bottom-full mb-2 left-0 right-[-100%] bg-slate-800 border border-white/10 rounded-xl shadow-2xl z-50 overflow-hidden backdrop-blur-xl">
                             <button
                                 onClick={() => handleExport('png')}
-                                className="w-full px-4 py-2 text-left hover:bg-gray-50 text-sm border-b border-gray-100"
+                                className="w-full px-5 py-3 text-left hover:bg-indigo-600 text-sm border-b border-white/5 text-white font-medium flex items-center gap-3 transition-colors"
                             >
-                                🖼️ Export as PNG
+                                <span className="text-lg">🖼️</span> High-Res PNG
                             </button>
                             <button
                                 onClick={() => handleExport('pdf')}
-                                className="w-full px-4 py-2 text-left hover:bg-gray-50 text-sm border-b border-gray-100"
+                                className="w-full px-5 py-3 text-left hover:bg-indigo-600 text-sm border-b border-white/5 text-white font-medium flex items-center gap-3 transition-colors"
                             >
-                                📄 Export as PDF
+                                <span className="text-lg">📄</span> Blueprint PDF
                             </button>
                             <button
                                 onClick={() => handleExport('json')}
-                                className="w-full px-4 py-2 text-left hover:bg-gray-50 text-sm"
+                                className="w-full px-5 py-3 text-left hover:bg-indigo-600 text-sm text-white font-medium flex items-center gap-3 transition-colors"
                             >
-                                💾 Export as JSON
+                                <span className="text-lg">💾</span> State JSON
                             </button>
                         </div>
                     )}
@@ -273,57 +275,63 @@ export function ControlPanel() {
                 />
                 <button
                     onClick={() => fileInputRef.current?.click()}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors text-sm font-medium flex items-center justify-center gap-2"
+                    className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl hover:bg-white/10 transition-all text-sm font-bold flex items-center justify-center gap-2 text-slate-300 uppercase tracking-wider col-span-1"
                 >
-                    <span>📤</span>
-                    <span>Import JSON</span>
+                    <span>📤 Import</span>
                 </button>
             </div>
 
             {/* Compliance Score */}
             {activeTemplate && (
-                <div className="p-4 rounded-lg bg-gradient-to-br from-slate-50 to-gray-50 border border-slate-200 space-y-3">
+                <div className="p-5 rounded-xl bg-gradient-to-br from-indigo-900/40 to-black border border-indigo-500/30 space-y-4 shadow-xl">
                     <div className="flex items-center justify-between">
-                        <h2 className="text-sm font-semibold text-gray-700">Vastu Compliance</h2>
-                        <span className={`text-2xl font-bold ${complianceStatus.color}`}>
-                            {complianceReport.totalScore}%
+                        <h2 className="text-xs font-bold text-slate-300 tracking-widest uppercase">Compliance Score</h2>
+                        <span className={`text-3xl font-black tracking-tighter ${complianceReport.totalScore >= 80 ? 'text-emerald-400 text-glow' :
+                                complianceReport.totalScore >= 60 ? 'text-amber-400 text-glow' : 'text-red-400 text-glow'
+                            }`}>
+                            {complianceReport.totalScore}<span className="text-lg opacity-60">%</span>
                         </span>
                     </div>
 
-                    <div className="flex-1 bg-gray-200 rounded-full h-3 overflow-hidden">
+                    <div className="flex-1 bg-black/60 rounded-full h-2 overflow-hidden border border-white/5 ring-1 ring-white/5">
                         <div
-                            className={`h-3 rounded-full transition-all duration-500 ${complianceReport.totalScore >= 80
-                                ? 'bg-green-500'
+                            className={`h-full rounded-full transition-all duration-1000 ease-out ${complianceReport.totalScore >= 80
+                                ? 'bg-gradient-to-r from-emerald-600 to-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.8)]'
                                 : complianceReport.totalScore >= 60
-                                    ? 'bg-yellow-500'
-                                    : 'bg-red-500'
+                                    ? 'bg-gradient-to-r from-amber-600 to-amber-400'
+                                    : 'bg-gradient-to-r from-red-600 to-red-400'
                                 }`}
                             style={{ width: `${complianceReport.totalScore}%` }}
                         />
                     </div>
 
-                    <p className="text-xs text-gray-600 text-center">
-                        {complianceStatus.text} - {complianceReport.hardViolations.length} violation(s)
+                    <p className="text-xs text-slate-400 text-center font-medium">
+                        <span className={complianceReport.totalScore >= 80 ? 'text-emerald-300' : 'text-amber-300'}>{complianceStatus.text}</span> • {complianceReport.hardViolations.length} Blockers
                     </p>
-
-                    {complianceReport.hardViolations.length > 0 && (
-                        <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded text-xs text-red-700">
-                            ⚠️ {complianceReport.hardViolations.length} room(s) in forbidden zones
-                        </div>
-                    )}
                 </div>
             )}
 
             {/* Selected Room Info */}
             {selectedRoom && (
-                <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm">
-                    <div className="font-semibold text-slate-900 mb-1">Selected Room</div>
-                    <div className="text-slate-700">{selectedRoom.label}</div>
-                    <div className="text-xs text-slate-600 mt-1">
-                        Zone: {selectedRoom.zone} • Score: {selectedRoom.score}%
+                <div className="p-4 bg-purple-900/20 border border-purple-500/30 rounded-xl text-sm backdrop-blur-md shadow-lg">
+                    <div className="text-[10px] font-bold text-purple-300 uppercase tracking-widest mb-2 flex items-center gap-2">
+                        <div className="w-1.5 h-1.5 rounded-full bg-purple-400"></div> Selection Matrix
                     </div>
-                    <div className="text-xs text-slate-500 mt-1">
-                        {selectedRoom.width.toFixed(1)}m × {selectedRoom.height.toFixed(1)}m
+                    <div className="font-bold text-white text-lg tracking-tight">{selectedRoom.label}</div>
+
+                    <div className="grid grid-cols-2 gap-2 mt-3 text-xs bg-black/30 p-2 rounded-lg border border-white/5">
+                        <div>
+                            <span className="text-slate-500 block uppercase text-[9px] font-bold">Zone</span>
+                            <span className="text-indigo-300 font-bold">{selectedRoom.zone}</span>
+                        </div>
+                        <div>
+                            <span className="text-slate-500 block uppercase text-[9px] font-bold">Resonance</span>
+                            <span className={selectedRoom.score >= 80 ? 'text-emerald-400 font-bold' : selectedRoom.score >= 50 ? 'text-amber-400 font-bold' : 'text-red-400 font-bold'}>{selectedRoom.score}%</span>
+                        </div>
+                        <div className="col-span-2 pt-1 border-t border-white/5 mt-1">
+                            <span className="text-slate-500 block uppercase text-[9px] font-bold">Footprint</span>
+                            <span className="text-slate-300 font-mono">{selectedRoom.width.toFixed(1)}m × {selectedRoom.height.toFixed(1)}m</span>
+                        </div>
                     </div>
                 </div>
             )}

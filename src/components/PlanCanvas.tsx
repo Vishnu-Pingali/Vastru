@@ -52,8 +52,8 @@ export function PlanCanvas() {
         const scale = getScale();
         const offset = getOffset();
 
-        // Clear canvas
-        ctx.fillStyle = '#FFFFFF';
+        // Clear canvas (Dark Cyberpunk Blueprint Theme)
+        ctx.fillStyle = '#060B19';
         ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
         // Draw light grid
@@ -95,8 +95,8 @@ export function PlanCanvas() {
     const drawGrid = (ctx: CanvasRenderingContext2D, scale: number, offset: { x: number; y: number }) => {
         const gridSize = 1; // 1 meter
 
-        ctx.strokeStyle = '#E5E7EB';
-        ctx.lineWidth = 0.5;
+        ctx.strokeStyle = '#1E293B'; // Dark slate
+        ctx.lineWidth = 1;
 
         // Vertical lines
         for (let x = 0; x <= plot.width; x += gridSize) {
@@ -109,6 +109,24 @@ export function PlanCanvas() {
 
         // Horizontal lines
         for (let y = 0; y <= plot.height; y += gridSize) {
+            const py = offset.y + y * scale;
+            ctx.beginPath();
+            ctx.moveTo(offset.x, py);
+            ctx.lineTo(offset.x + plot.width * scale, py);
+            ctx.stroke();
+        }
+
+        // Micro-grid
+        ctx.strokeStyle = '#0F172A';
+        ctx.lineWidth = 0.5;
+        for (let x = 0; x <= plot.width; x += 0.2) {
+            const px = offset.x + x * scale;
+            ctx.beginPath();
+            ctx.moveTo(px, offset.y);
+            ctx.lineTo(px, offset.y + plot.height * scale);
+            ctx.stroke();
+        }
+        for (let y = 0; y <= plot.height; y += 0.2) {
             const py = offset.y + y * scale;
             ctx.beginPath();
             ctx.moveTo(offset.x, py);
@@ -138,9 +156,9 @@ export function PlanCanvas() {
         }));
 
         // Draw zone boundaries and labels
-        ctx.strokeStyle = '#D1D5DB';
+        ctx.strokeStyle = '#475569';
         ctx.lineWidth = 1;
-        ctx.setLineDash([5, 5]);
+        ctx.setLineDash([8, 8]);
 
         offsetZones.forEach((zone) => {
             const zx = offset.x + zone.x * scale;
@@ -153,8 +171,8 @@ export function PlanCanvas() {
 
             // Zone label
             ctx.save();
-            ctx.fillStyle = '#9CA3AF';
-            ctx.font = `${Math.max(10, scale * 0.5)}px Arial`;
+            ctx.fillStyle = '#64748B';
+            ctx.font = `bold ${Math.max(12, scale * 0.5)}px 'Outfit', sans-serif`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
             ctx.fillText(zone.id, zx + zw / 2, zy + zh / 2);
@@ -174,15 +192,25 @@ export function PlanCanvas() {
             // Wall thickness in pixels
             const thicknessPx = wall.thickness * scale;
 
-            // Wall color: darker for external, lighter for internal
-            ctx.strokeStyle = wall.isExternal ? '#1F2937' : '#6B7280';
+            // Wall color: brighter blue for external, dimmer for internal
+            ctx.strokeStyle = wall.isExternal ? '#38BDF8' : '#0284C7';
             ctx.lineWidth = Math.max(thicknessPx, wall.isExternal ? 3 : 2);
             ctx.lineCap = 'square';
+
+            // Neon glow for external walls
+            if (wall.isExternal) {
+                ctx.shadowColor = '#38BDF8';
+                ctx.shadowBlur = 10;
+            } else {
+                ctx.shadowBlur = 0;
+            }
 
             ctx.beginPath();
             ctx.moveTo(x1, y1);
             ctx.lineTo(x2, y2);
             ctx.stroke();
+
+            ctx.shadowBlur = 0; // reset
         });
     };
 
@@ -195,40 +223,45 @@ export function PlanCanvas() {
 
             const isSelected = room.id === selectedRoomId;
 
-            // Room fill (very light)
-            ctx.fillStyle = isSelected ? '#EFF6FF' : '#FFFFFF';
+            // Room fill (transparent dark blue)
+            ctx.fillStyle = isSelected ? 'rgba(56, 189, 248, 0.15)' : 'rgba(14, 165, 233, 0.03)';
             ctx.fillRect(rx, ry, rw, rh);
 
             // Room border (compliance color)
-            const borderColor =
-                room.score >= 80 ? '#22C55E' :
-                    room.score >= 60 ? '#F59E0B' :
-                        room.score >= 30 ? '#F97316' :
-                            '#EF4444';
+            let borderRGB = room.score >= 80 ? '52, 211, 153' : // emerald
+                room.score >= 60 ? '251, 191, 36' : // amber
+                    room.score >= 30 ? '249, 115, 22' : // orange
+                        '2ef, 68, 68'; // red
 
-            ctx.strokeStyle = isSelected ? '#3B82F6' : borderColor;
+            ctx.strokeStyle = isSelected ? '#38BDF8' : `rgb(${borderRGB})`;
             ctx.lineWidth = isSelected ? 3 : 1.5;
+
+            if (isSelected) {
+                ctx.shadowColor = '#38BDF8';
+                ctx.shadowBlur = 15;
+            }
             ctx.strokeRect(rx, ry, rw, rh);
+            ctx.shadowBlur = 0;
 
             // Room label
             ctx.save();
-            ctx.fillStyle = '#111827';
-            ctx.font = `bold ${Math.max(11, scale * 0.4)}px monospace`;
+            ctx.fillStyle = '#F8FAFC';
+            ctx.font = `bold ${Math.max(12, scale * 0.4)}px 'Outfit', sans-serif`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
 
             const lines = room.label.split('\n');
-            const lineHeight = Math.max(13, scale * 0.5);
+            const lineHeight = Math.max(14, scale * 0.5);
             const totalHeight = lines.length * lineHeight;
             const startY = ry + rh / 2 - totalHeight / 2 + lineHeight / 2;
 
             lines.forEach((line, i) => {
-                ctx.fillText(line, rx + rw / 2, startY + i * lineHeight);
+                ctx.fillText(line.toUpperCase(), rx + rw / 2, startY + i * lineHeight);
             });
 
             // Room dimensions
-            ctx.font = `${Math.max(9, scale * 0.3)}px monospace`;
-            ctx.fillStyle = '#6B7280';
+            ctx.font = `${Math.max(10, scale * 0.3)}px monospace`;
+            ctx.fillStyle = '#94A3B8';
             ctx.fillText(
                 `${room.width.toFixed(1)}m × ${room.height.toFixed(1)}m`,
                 rx + rw / 2,
@@ -247,9 +280,9 @@ export function PlanCanvas() {
                     ctx.translate(fx, fy);
                     ctx.rotate((f.rotation * Math.PI) / 180);
 
-                    ctx.strokeStyle = '#9CA3AF'; // gray-400
+                    ctx.strokeStyle = '#3B82F6'; // blue-500
                     ctx.setLineDash([2, 2]);
-                    ctx.lineWidth = 1;
+                    ctx.lineWidth = 1.5;
 
                     if (f.type === 'bed') {
                         ctx.strokeRect(0, 0, fw, fh);
@@ -296,10 +329,10 @@ export function PlanCanvas() {
             ctx.translate(px, py);
             ctx.rotate(angle);
 
-            // Draw window frame (light blue CAD style)
-            ctx.fillStyle = '#BFDBFE'; // blue-200
-            ctx.strokeStyle = '#3B82F6'; // blue-500
-            ctx.lineWidth = 1;
+            // Draw window frame (cyberpunk style)
+            ctx.fillStyle = '#0284C7';
+            ctx.strokeStyle = '#7DD3FC';
+            ctx.lineWidth = 2;
 
             const frameThickness = wall.thickness * scale;
             ctx.fillRect(-winWidthPx / 2, -frameThickness / 2, winWidthPx, frameThickness);
@@ -336,22 +369,22 @@ export function PlanCanvas() {
             // Door width in pixels
             const doorWidthPx = door.width * scale;
 
-            // Draw door opening (white gap)
+            // Draw door opening (dark gap)
             ctx.save();
             ctx.translate(px, py);
             ctx.rotate(angle);
 
-            ctx.strokeStyle = '#FFFFFF';
-            ctx.lineWidth = Math.max(wall.thickness * scale, 3);
+            ctx.strokeStyle = '#060B19'; // background color to create gap
+            ctx.lineWidth = Math.max(wall.thickness * scale + 2, 4);
             ctx.beginPath();
             ctx.moveTo(-doorWidthPx / 2, 0);
             ctx.lineTo(doorWidthPx / 2, 0);
             ctx.stroke();
 
             // Draw door swing arc
-            ctx.strokeStyle = '#9CA3AF';
-            ctx.lineWidth = 1;
-            ctx.setLineDash([2, 2]);
+            ctx.strokeStyle = '#38BDF8';
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([4, 4]);
 
             const swingRadius = doorWidthPx * 0.8;
             const swingAngleRad = (door.swingAngle * Math.PI) / 180;
@@ -367,7 +400,21 @@ export function PlanCanvas() {
             );
             ctx.stroke();
 
+            // Draw solid door line
             ctx.setLineDash([]);
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = '#F8FAFC'; // white door
+            ctx.beginPath();
+            ctx.moveTo(door.swingDirection === 'left' ? -doorWidthPx / 2 : doorWidthPx / 2, 0);
+
+            // Calculate end point of the open door
+            const originX = door.swingDirection === 'left' ? -doorWidthPx / 2 : doorWidthPx / 2;
+            const endX = originX + swingRadius * Math.cos(swingDirection === 1 ? swingAngleRad : -swingAngleRad);
+            const endY = swingRadius * Math.sin(swingDirection === 1 ? swingAngleRad : -swingAngleRad);
+
+            ctx.lineTo(endX, endY);
+            ctx.stroke();
+
             ctx.restore();
         });
     };
@@ -377,18 +424,18 @@ export function PlanCanvas() {
         const plotHeightPx = plot.height * scale;
 
         // Plot boundary line
-        ctx.strokeStyle = '#94A3B8';
-        ctx.lineWidth = 1;
-        ctx.setLineDash([10, 5]);
+        ctx.strokeStyle = '#818CF8';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([15, 10]);
         ctx.strokeRect(offset.x, offset.y, plotWidthPx, plotHeightPx);
         ctx.setLineDash([]);
 
         // CAD Dimension Lines
-        ctx.font = '12px Courier New';
-        ctx.fillStyle = '#64748B';
+        ctx.font = 'bold 12px Courier New';
+        ctx.fillStyle = '#A5B4FC';
         ctx.textAlign = 'center';
-        ctx.strokeStyle = '#CBD5E1';
-        ctx.lineWidth = 0.5;
+        ctx.strokeStyle = '#4F46E5';
+        ctx.lineWidth = 1;
 
         // Width Dimension (Bottom)
         const dimY = offset.y + plotHeightPx + 45;
@@ -398,10 +445,10 @@ export function PlanCanvas() {
         ctx.stroke();
         // Ticks
         ctx.beginPath();
-        ctx.moveTo(offset.x, dimY - 5); ctx.lineTo(offset.x, dimY + 5);
-        ctx.moveTo(offset.x + plotWidthPx, dimY - 5); ctx.lineTo(offset.x + plotWidthPx, dimY + 5);
+        ctx.moveTo(offset.x, dimY - 8); ctx.lineTo(offset.x, dimY + 8);
+        ctx.moveTo(offset.x + plotWidthPx, dimY - 8); ctx.lineTo(offset.x + plotWidthPx, dimY + 8);
         ctx.stroke();
-        ctx.fillText(`${plot.width.toFixed(1)}m`, offset.x + plotWidthPx / 2, dimY - 8);
+        ctx.fillText(`${plot.width.toFixed(1)}m`, offset.x + plotWidthPx / 2, dimY - 10);
 
         // Height Dimension (Left)
         const dimX = offset.x - 45;
@@ -414,41 +461,48 @@ export function PlanCanvas() {
         ctx.stroke();
         // Ticks
         ctx.beginPath();
-        ctx.moveTo(-plotHeightPx / 2, -5); ctx.lineTo(-plotHeightPx / 2, 5);
-        ctx.moveTo(plotHeightPx / 2, -5); ctx.lineTo(plotHeightPx / 2, 5);
+        ctx.moveTo(-plotHeightPx / 2, -8); ctx.lineTo(-plotHeightPx / 2, 8);
+        ctx.moveTo(plotHeightPx / 2, -8); ctx.lineTo(plotHeightPx / 2, 8);
         ctx.stroke();
-        ctx.fillText(`${plot.height.toFixed(1)}m`, 0, -8);
+        ctx.fillText(`${plot.height.toFixed(1)}m`, 0, -10);
         ctx.restore();
     };
 
     const drawNorthArrow = (ctx: CanvasRenderingContext2D, offset: { x: number; y: number }) => {
-        const arrowSize = 30;
-        const arrowX = offset.x + 40;
-        const arrowY = offset.y - 40;
+        const arrowSize = 35;
+        const arrowX = offset.x + 50;
+        const arrowY = offset.y - 50;
 
         ctx.save();
         ctx.translate(arrowX, arrowY);
         ctx.rotate((plot.orientation * Math.PI) / 180);
 
         // Arrow
-        ctx.strokeStyle = '#1F2937';
-        ctx.fillStyle = '#1F2937';
+        ctx.strokeStyle = '#E2E8F0';
+        ctx.fillStyle = '#E2E8F0';
         ctx.lineWidth = 2;
 
         ctx.beginPath();
         ctx.moveTo(0, -arrowSize);
         ctx.lineTo(-arrowSize / 4, 0);
-        ctx.lineTo(0, -arrowSize / 2);
+        ctx.lineTo(0, -arrowSize / 3);
         ctx.lineTo(arrowSize / 4, 0);
         ctx.closePath();
         ctx.fill();
         ctx.stroke();
 
+        // Compass ring
+        ctx.beginPath();
+        ctx.arc(0, -arrowSize / 2, arrowSize * 0.8, 0, Math.PI * 2);
+        ctx.strokeStyle = '#475569';
+        ctx.stroke();
+
         // N label
-        ctx.font = 'bold 12px Arial';
+        ctx.fillStyle = '#38BDF8';
+        ctx.font = 'bold 16px Outfit';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
-        ctx.fillText('N', 0, 5);
+        ctx.fillText('N', 0, 8);
 
         ctx.restore();
     };
@@ -459,8 +513,8 @@ export function PlanCanvas() {
         const scaleX = offset.x;
         const scaleY = offset.y + plot.height * scale + 30;
 
-        ctx.strokeStyle = '#1F2937';
-        ctx.fillStyle = '#1F2937';
+        ctx.strokeStyle = '#94A3B8';
+        ctx.fillStyle = '#94A3B8';
         ctx.lineWidth = 2;
 
         // Scale line
@@ -471,20 +525,24 @@ export function PlanCanvas() {
 
         // End marks
         ctx.beginPath();
-        ctx.moveTo(scaleX, scaleY - 5);
-        ctx.lineTo(scaleX, scaleY + 5);
+        ctx.moveTo(scaleX, scaleY - 6);
+        ctx.lineTo(scaleX, scaleY + 6);
         ctx.stroke();
 
         ctx.beginPath();
-        ctx.moveTo(scaleX + scaleLengthPx, scaleY - 5);
-        ctx.lineTo(scaleX + scaleLengthPx, scaleY + 5);
+        ctx.moveTo(scaleX + scaleLengthPx, scaleY - 6);
+        ctx.lineTo(scaleX + scaleLengthPx, scaleY + 6);
         ctx.stroke();
 
+        // Fill middle
+        ctx.fillRect(scaleX, scaleY - 2, scaleLengthPx / 2, 4);
+
         // Label
-        ctx.font = '11px Arial';
+        ctx.font = 'bold 12px Courier New';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
-        ctx.fillText(`${scaleLength}m`, scaleX + scaleLengthPx / 2, scaleY + 8);
+        ctx.fillStyle = '#E2E8F0';
+        ctx.fillText(`Scale: ${scaleLength}m`, scaleX + scaleLengthPx / 2, scaleY + 12);
     };
 
     useEffect(() => {
@@ -504,28 +562,45 @@ export function PlanCanvas() {
     }, []);
 
     return (
-        <div className="bg-white rounded-lg shadow-lg p-6 border border-gray-200">
-            <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold text-gray-800">
-                    {activeTemplate ? activeTemplate.name : 'Floor Plan'}
-                </h2>
-                <div className="text-sm text-gray-500">
-                    {plot.width}m × {plot.height}m • Scale: 1:{Math.round(1 / getScale())}
+        <div className="glass-card p-6 flex flex-col relative z-10 w-full overflow-hidden">
+            <div className="flex items-center justify-between mb-6 border-b border-white/10 pb-4">
+                <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-slate-800 border border-white/10 flex items-center justify-center text-xl">
+                        📐
+                    </div>
+                    <div>
+                        <h2 className="text-xl font-bold text-white tracking-wide">
+                            {activeTemplate ? activeTemplate.name : 'Topology Blueprint'}
+                        </h2>
+                        <div className="text-xs text-indigo-300 uppercase tracking-widest mt-1">
+                            {plot.width}m × {plot.height}m / <span className="opacity-70">Scale 1:{Math.round(1 / getScale())}</span>
+                        </div>
+                    </div>
+                </div>
+                <div className="flex gap-2">
+                    <div className="px-3 py-1.5 bg-black/40 rounded-lg border border-white/10 text-[10px] font-mono text-emerald-400 font-bold">
+                        <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 mr-2 animate-pulse"></span>
+                        LIVE RENDER
+                    </div>
                 </div>
             </div>
 
-            <div ref={containerRef} className="flex justify-center">
+            <div ref={containerRef} className="flex justify-center w-full bg-black/50 rounded-2xl p-4 border border-white/5 relative group">
+                {/* Scanner line effect */}
+                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-cyan-400 to-transparent opacity-0 group-hover:opacity-50 animate-[float_3s_ease-in-out_infinite] blur-sm"></div>
+
                 <canvas
                     ref={canvasRef}
                     width={CANVAS_WIDTH}
                     height={CANVAS_HEIGHT}
-                    className="border border-gray-300 shadow-sm cursor-crosshair"
-                    style={{ maxWidth: '100%', height: 'auto' }}
+                    className="border border-white/10 shadow-2xl rounded-xl cursor-crosshair object-contain w-full h-[65vh]"
                 />
             </div>
 
-            <div className="mt-4 text-center text-xs text-gray-400">
-                Professional CAD-style rendering • Walls, doors, and Vastu zones
+            <div className="mt-5 text-center text-xs text-slate-500 uppercase tracking-widest font-bold flex justify-center items-center gap-6">
+                <span><span className="w-3 h-3 inline-block bg-sky-400 align-middle mr-2 rounded-sm blur-[1px]"></span> Structure</span>
+                <span><span className="w-3 h-3 inline-block bg-white align-middle mr-2 rounded-sm"></span> Acess points</span>
+                <span><span className="w-3 h-3 inline-block border border-dashed border-slate-500 align-middle mr-2 rounded-sm"></span> Vastu Grid / Energy field</span>
             </div>
         </div>
     );

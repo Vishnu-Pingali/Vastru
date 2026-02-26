@@ -120,6 +120,7 @@ export interface Room {
     templateId: string; // Reference to template
     type: RoomType;
     label: string;
+    customLabel?: string;
     x: number;
     y: number;
     width: number;
