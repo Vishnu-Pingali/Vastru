@@ -1,0 +1,175 @@
+{
+    "zones": [
+        "NE",
+        "N",
+        "NW",
+        "E",
+        "C",
+        "W",
+        "SE",
+        "S",
+        "SW"
+    ],
+    "room_rules": {
+        "puja": {
+            "preferred": [
+                "NE"
+            ],
+            "allowed": [
+                "N",
+                "E"
+            ],
+            "forbidden": [
+                "SW",
+                "S",
+                "SE",
+                "W",
+                "C"
+            ]
+        },
+        "kitchen": {
+            "preferred": [
+                "SE"
+            ],
+            "allowed": [
+                "NW"
+            ],
+            "forbidden": [
+                "NE",
+                "N",
+                "SW",
+                "C"
+            ]
+        },
+        "master_bedroom": {
+            "preferred": [
+                "SW"
+            ],
+            "allowed": [
+                "S",
+                "W"
+            ],
+            "forbidden": [
+                "NE",
+                "N",
+                "E",
+                "C"
+            ]
+        },
+        "bedroom": {
+            "preferred": [
+                "NW",
+                "W",
+                "S"
+            ],
+            "allowed": [
+                "SE",
+                "SW"
+            ],
+            "forbidden": [
+                "NE",
+                "C"
+            ]
+        },
+        "toilet": {
+            "preferred": [
+                "NW",
+                "W"
+            ],
+            "allowed": [
+                "S",
+                "SE"
+            ],
+            "forbidden": [
+                "NE",
+                "N",
+                "E",
+                "SW",
+                "C"
+            ]
+        },
+        "living_room": {
+            "preferred": [
+                "N",
+                "E"
+            ],
+            "allowed": [
+                "NE",
+                "W"
+            ],
+            "forbidden": [
+                "SW",
+                "S",
+                "C"
+            ]
+        },
+        "dining": {
+            "preferred": [
+                "W",
+                "NW"
+            ],
+            "allowed": [
+                "E",
+                "S"
+            ],
+            "forbidden": [
+                "SW",
+                "C"
+            ]
+        },
+        "study": {
+            "preferred": [
+                "NE",
+                "E",
+                "W"
+            ],
+            "allowed": [
+                "N"
+            ],
+            "forbidden": [
+                "S",
+                "SW",
+                "SE",
+                "C"
+            ]
+        },
+        "staircase": {
+            "preferred": [
+                "SW",
+                "S",
+                "W"
+            ],
+            "allowed": [
+                "SE",
+                "NW"
+            ],
+            "forbidden": [
+                "NE",
+                "N",
+                "C"
+            ]
+        },
+        "entrance": {
+            "preferred": [
+                "E",
+                "NE"
+            ],
+            "allowed": [
+                "N",
+                "W"
+            ],
+            "forbidden": [
+                "S",
+                "SW",
+                "SE",
+                "C"
+            ]
+        }
+    },
+    "weights": {
+        "vastu_soft": 1.0,
+        "adjacency": 0.5,
+        "area_mismatch": 0.3,
+        "hard_violation": 10.0
+    }
+}

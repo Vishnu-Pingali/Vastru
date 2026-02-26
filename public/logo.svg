@@ -1,0 +1,26 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Outer mandala circle -->
+  <circle cx="32" cy="32" r="30" fill="#0F62FE" opacity="0.1"/>
+  <circle cx="32" cy="32" r="30" stroke="#0F62FE" stroke-width="2" fill="none"/>
+  
+  <!-- Inner mandala pattern -->
+  <circle cx="32" cy="32" r="20" stroke="#F59E0B" stroke-width="1.5" fill="none"/>
+  <circle cx="32" cy="32" r="12" stroke="#F59E0B" stroke-width="1.5" fill="none"/>
+  
+  <!-- Directional lines (8 directions) -->
+  <line x1="32" y1="12" x2="32" y2="20" stroke="#0F62FE" stroke-width="2"/>
+  <line x1="32" y1="44" x2="32" y2="52" stroke="#0F62FE" stroke-width="2"/>
+  <line x1="12" y1="32" x2="20" y2="32" stroke="#0F62FE" stroke-width="2"/>
+  <line x1="44" y1="32" x2="52" y2="32" stroke="#0F62FE" stroke-width="2"/>
+  <line x1="18" y1="18" x2="24" y2="24" stroke="#0F62FE" stroke-width="1.5"/>
+  <line x1="46" y1="18" x2="40" y2="24" stroke="#0F62FE" stroke-width="1.5"/>
+  <line x1="18" y1="46" x2="24" y2="40" stroke="#0F62FE" stroke-width="1.5"/>
+  <line x1="46" y1="46" x2="40" y2="40" stroke="#0F62FE" stroke-width="1.5"/>
+  
+  <!-- House symbol in center -->
+  <path d="M32 22 L40 28 L40 38 L24 38 L24 28 Z" fill="#F59E0B" stroke="#0B3B66" stroke-width="1.5"/>
+  <rect x="28" y="32" width="8" height="6" fill="#0B3B66"/>
+  
+  <!-- Om symbol stylized -->
+  <circle cx="32" cy="8" r="2" fill="#F59E0B"/>
+</svg>
