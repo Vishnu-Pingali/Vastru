@@ -125,7 +125,7 @@ export const useStore = create<StoreState>((set, get) => ({
         try {
             // Define API key directly or prompt user (using a placeholder or import.meta.env)
             // @ts-ignore
-            const apiKey = import.meta.env.VITE_GEMINI_API_KEY || prompt("Enter your Gemini API key:");
+            const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
             if (!apiKey) throw new Error("Gemini API key is required to generate AI layouts.");
 
             const genAI = new GoogleGenerativeAI(apiKey);
@@ -220,15 +220,8 @@ export const useStore = create<StoreState>((set, get) => ({
         } catch (error: any) {
             console.error('AI Generator Error:', error);
 
-            // @ts-ignore
-            const apiKey = import.meta.env.VITE_GEMINI_API_KEY || "";
-            if (apiKey === 'your_api_key_here') {
-                showToastMessage('⚠️ Please add your actual Gemini API key to the .env file!');
-                return;
-            }
-
             const errorMessage = error instanceof Error ? error.message : String(error);
-            showToastMessage(`⚠️ AI Failed: ${errorMessage.substring(0, 150)}`);
+            console.warn(`AI Generation failed, falling back to local layout: ${errorMessage}`);
 
             // Fallback to local JS generation if Python fails
             const { rooms, compliance, walls, doors } = generateLayout(plot, roomReqs);
