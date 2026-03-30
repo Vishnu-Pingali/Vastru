@@ -129,7 +129,7 @@ export const useStore = create<StoreState>((set, get) => ({
             if (!apiKey) throw new Error("Gemini API key is required to generate AI layouts.");
 
             const genAI = new GoogleGenerativeAI(apiKey);
-            const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
+            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
             const promptText = `
                 You are an expert Vastu Shastra architect and floor plan designer. I need a JSON structure for a complete, solid, monolithic floor plan based on these constraints:
