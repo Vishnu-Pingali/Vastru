@@ -130,8 +130,7 @@ export const useStore = create<StoreState>((set, get) => ({
             if (apiKey) {
                 try {
                     const genAI = new GoogleGenerativeAI(apiKey);
-                    // Using gemini-1.5-flash which is reliable and fast
-                    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+                    const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
 
                     const promptText = `
 You are an expert Vastu Shastra architect and floor plan designer. Generate ONLY valid JSON (no markdown blocks) for a floor plan.
