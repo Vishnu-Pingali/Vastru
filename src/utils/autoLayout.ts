@@ -22,6 +22,7 @@ type LayoutRoom = Room;
 type LayoutScore = { score: number; hardViolation: { roomId: string; reason: string } | null };
 type GridCell = { row: 0 | 1 | 2; col: 0 | 1 | 2 };
 type Rect = { x: number; y: number; width: number; height: number };
+type FacingDirection = 'N' | 'E' | 'S' | 'W';
 
 const ZONE_TO_CELL: Record<ZoneId, GridCell> = {
     NW: { row: 0, col: 0 },
@@ -52,22 +53,6 @@ function snapToGrid(value: number, step = 0.5) {
     return Math.round(value / step) * step;
 }
 
-function normalizeEdge(
-    x1: number,
-    y1: number,
-    x2: number,
-    y2: number
-): { x1: number; y1: number; x2: number; y2: number } {
-    if (x1 < x2 || (x1 === x2 && y1 < y2)) {
-        return { x1, y1, x2, y2 };
-    }
-    return { x1: x2, y1: y2, x2: x1, y2: y1 };
-}
-
-function edgeKey(edge: { x1: number; y1: number; x2: number; y2: number }) {
-    return `${edge.x1},${edge.y1},${edge.x2},${edge.y2}`;
-}
-
 function wallLength(edge: { x1: number; y1: number; x2: number; y2: number } | { start: { x: number; y: number }; end: { x: number; y: number } }) {
     const x1 = 'x1' in edge ? edge.x1 : edge.start.x;
     const y1 = 'y1' in edge ? edge.y1 : edge.start.y;
@@ -90,6 +75,41 @@ function roomDistance(roomA: LayoutRoom, roomB: LayoutRoom) {
     const dx = Math.max(0, Math.max(roomA.x - (roomB.x + roomB.width), roomB.x - (roomA.x + roomA.width)));
     const dy = Math.max(0, Math.max(roomA.y - (roomB.y + roomB.height), roomB.y - (roomA.y + roomA.height)));
     return Math.hypot(dx, dy);
+}
+
+function roomCenter(room: LayoutRoom) {
+    return {
+        x: room.x + room.width / 2,
+        y: room.y + room.height / 2,
+    };
+}
+
+function isHabitableRoom(type: RoomType) {
+    return !['toilet', 'passage', 'utility'].includes(type);
+}
+
+function isCornerRoom(plot: PlotSettings, room: LayoutRoom, tolerance = 0.6) {
+    const touchesLeft = room.x <= tolerance;
+    const touchesRight = plot.width - (room.x + room.width) <= tolerance;
+    const touchesTop = room.y <= tolerance;
+    const touchesBottom = plot.height - (room.y + room.height) <= tolerance;
+
+    return (touchesLeft || touchesRight) && (touchesTop || touchesBottom);
+}
+
+function distanceFromEntranceAxis(plot: PlotSettings, room: LayoutRoom, facing: FacingDirection) {
+    const center = roomCenter(room);
+
+    switch (facing) {
+        case 'N':
+            return center.y;
+        case 'S':
+            return plot.height - center.y;
+        case 'E':
+            return plot.width - center.x;
+        case 'W':
+            return center.x;
+    }
 }
 
 function getRoomArea(room: LayoutRoom) {
@@ -147,6 +167,41 @@ function getPreferredZones(roomType: RoomType, rules: VastuRules): ZoneId[] {
 
 function cellKey(cell: GridCell) {
     return `${cell.row}-${cell.col}`;
+}
+
+function getFacingDirection(orientation: number): FacingDirection {
+    const normalized = ((orientation % 360) + 360) % 360;
+
+    if (normalized >= 315 || normalized < 45) return 'N';
+    if (normalized >= 45 && normalized < 135) return 'E';
+    if (normalized >= 135 && normalized < 225) return 'S';
+    return 'W';
+}
+
+function getFacingCell(facing: FacingDirection): GridCell {
+    switch (facing) {
+        case 'N':
+            return { row: 0, col: 1 };
+        case 'E':
+            return { row: 1, col: 2 };
+        case 'S':
+            return { row: 2, col: 1 };
+        case 'W':
+            return { row: 1, col: 0 };
+    }
+}
+
+function getInteriorCellForFacing(facing: FacingDirection): GridCell {
+    switch (facing) {
+        case 'N':
+            return { row: 1, col: 1 };
+        case 'E':
+            return { row: 1, col: 1 };
+        case 'S':
+            return { row: 1, col: 1 };
+        case 'W':
+            return { row: 1, col: 1 };
+    }
 }
 
 function areaOfReqs(roomReqs: RoomReq[]) {
@@ -215,8 +270,136 @@ function splitRect(rect: Rect, roomReqs: RoomReq[]): Array<{ req: RoomReq; rect:
     ];
 }
 
-function refineCellAssignments(assignments: Map<string, GridCell>, sorted: RoomReq[]) {
+function isExpandableRoomType(type: RoomType) {
+    return ['living_room', 'dining', 'passage', 'balcony'].includes(type);
+}
+
+function getRoomGrowthFactor(type: RoomType) {
+    switch (type) {
+        case 'toilet':
+        case 'puja':
+            return 1.2;
+        case 'kitchen':
+        case 'utility':
+        case 'entrance':
+        case 'study':
+            return 1.35;
+        case 'master_bedroom':
+        case 'bedroom':
+            return 1.6;
+        case 'living_room':
+        case 'dining':
+        case 'passage':
+        case 'balcony':
+            return 3;
+        default:
+            return 1.5;
+    }
+}
+
+function getPreferredAspectRatio(type: RoomType) {
+    switch (type) {
+        case 'toilet':
+            return 0.85;
+        case 'kitchen':
+        case 'utility':
+            return 0.95;
+        case 'entrance':
+        case 'puja':
+            return 1;
+        case 'passage':
+            return 1.4;
+        case 'living_room':
+        case 'dining':
+            return 1.2;
+        case 'master_bedroom':
+        case 'bedroom':
+            return 1.1;
+        default:
+            return 1;
+    }
+}
+
+function fitRoomToCell(req: RoomReq, rect: Rect): Rect {
+    if (isExpandableRoomType(req.type)) {
+        return rect;
+    }
+
+    const cellArea = rect.width * rect.height;
+    const targetArea = Math.min(cellArea, req.targetArea * getRoomGrowthFactor(req.type));
+    const preferredRatio = getPreferredAspectRatio(req.type);
+
+    let width = Math.sqrt(targetArea * preferredRatio);
+    let height = targetArea / Math.max(width, 0.1);
+
+    if (width > rect.width) {
+        width = rect.width;
+        height = targetArea / Math.max(width, 0.1);
+    }
+
+    if (height > rect.height) {
+        height = rect.height;
+        width = targetArea / Math.max(height, 0.1);
+    }
+
+    width = Math.max(1, Math.min(rect.width, snapToGrid(width)));
+    height = Math.max(1, Math.min(rect.height, snapToGrid(height)));
+
+    let x = rect.x;
+    let y = rect.y;
+
+    switch (req.type) {
+        case 'master_bedroom':
+        case 'bedroom':
+            x = rect.x;
+            y = rect.y + rect.height - height;
+            break;
+        case 'toilet':
+        case 'utility':
+        case 'kitchen':
+            x = rect.x + rect.width - width;
+            y = rect.y + rect.height - height;
+            break;
+        case 'puja':
+            x = rect.x + rect.width - width;
+            y = rect.y;
+            break;
+        case 'entrance':
+            x = rect.x + rect.width - width;
+            y = rect.y + (rect.height - height) / 2;
+            break;
+        default:
+            x = rect.x + (rect.width - width) / 2;
+            y = rect.y + (rect.height - height) / 2;
+            break;
+    }
+
+    return {
+        x: snapToGrid(x),
+        y: snapToGrid(y),
+        width,
+        height,
+    };
+}
+
+function refineCellAssignments(assignments: Map<string, GridCell>, sorted: RoomReq[], plot: PlotSettings) {
     const getAssigned = (type: RoomType) => sorted.find((req) => req.type === type && assignments.has(req.id));
+    const getAssignedById = (id: string) => sorted.find((req) => req.id === id && assignments.has(req.id));
+    const facing = getFacingDirection(plot.orientation);
+    const entranceCell = getFacingCell(facing);
+    const innerFacingCell = getInteriorCellForFacing(facing);
+    const privateCorner: Record<FacingDirection, GridCell> = {
+        N: { row: 2, col: 0 },
+        E: { row: 2, col: 0 },
+        S: { row: 0, col: 2 },
+        W: { row: 2, col: 2 },
+    };
+    const quietCorner: Record<FacingDirection, GridCell> = {
+        N: { row: 0, col: 2 },
+        E: { row: 0, col: 2 },
+        S: { row: 0, col: 0 },
+        W: { row: 0, col: 0 },
+    };
 
     const kitchen = getAssigned('kitchen');
     const utility = getAssigned('utility');
@@ -224,6 +407,10 @@ function refineCellAssignments(assignments: Map<string, GridCell>, sorted: RoomR
     const entrance = getAssigned('entrance');
     const dining = getAssigned('dining');
     const passage = getAssigned('passage');
+    const masterBedroom = getAssigned('master_bedroom');
+    const bedroom = getAssigned('bedroom');
+    const puja = getAssigned('puja');
+    const toilet = getAssigned('toilet');
 
     if (passage) {
         assignments.set(passage.id, { row: 1, col: 1 });
@@ -234,14 +421,56 @@ function refineCellAssignments(assignments: Map<string, GridCell>, sorted: RoomR
         assignments.set(utility.id, { row: kitchenCell.row, col: Math.max(0, kitchenCell.col - 1) as 0 | 1 | 2 });
     }
 
+    if (entrance) {
+        assignments.set(entrance.id, entranceCell);
+    }
+
     if (living && entrance) {
-        assignments.set(entrance.id, { row: 1, col: 2 });
+        assignments.set(living.id, innerFacingCell);
     }
 
     if (living && dining) {
         const livingCell = assignments.get(living.id)!;
         assignments.set(dining.id, { row: Math.min(2, livingCell.row + 1) as 0 | 1 | 2, col: livingCell.col });
     }
+
+    if (masterBedroom) {
+        assignments.set(masterBedroom.id, privateCorner[facing]);
+    }
+
+    if (bedroom) {
+        const masterCell = masterBedroom ? assignments.get(masterBedroom.id)! : privateCorner[facing];
+        assignments.set(bedroom.id, {
+            row: masterCell.row === 2 ? 0 : 2,
+            col: masterCell.col,
+        });
+    }
+
+    if (puja) {
+        assignments.set(puja.id, quietCorner[facing]);
+    }
+
+    if (masterBedroom && toilet) {
+        const masterCell = assignments.get(masterBedroom.id)!;
+        assignments.set(toilet.id, {
+            row: masterCell.row,
+            col: Math.min(2, masterCell.col + 1) as 0 | 1 | 2,
+        });
+    }
+
+    sorted
+        .filter((req) => req.type === 'toilet' && req.id.endsWith('_bath'))
+        .forEach((bathReq) => {
+            const parentId = bathReq.id.replace(/_bath$/, '');
+            const parent = getAssignedById(parentId);
+            if (!parent) return;
+
+            const parentCell = assignments.get(parent.id)!;
+            assignments.set(bathReq.id, {
+                row: parentCell.row,
+                col: Math.min(2, parentCell.col + 1) as 0 | 1 | 2,
+            });
+        });
 }
 
 function ensureCirculationRooms(roomReqs: RoomReq[], plot: PlotSettings): RoomReq[] {
@@ -471,6 +700,10 @@ function computeLayoutScore(
     const living = layoutRooms.find((r) => r.type === 'living_room');
     const dining = layoutRooms.find((r) => r.type === 'dining');
     const entrance = layoutRooms.find((r) => r.type === 'entrance');
+    const masterBedroom = layoutRooms.find((r) => r.type === 'master_bedroom');
+    const bedrooms = layoutRooms.filter((r) => r.type === 'master_bedroom' || r.type === 'bedroom');
+    const passage = layoutRooms.find((r) => r.type === 'passage');
+    const facing = plot ? getFacingDirection(plot.orientation) : 'N';
 
     layoutRooms.forEach((room) => {
         if (plot && (room.type === 'balcony' || room.type === 'entrance')) {
@@ -493,6 +726,18 @@ function computeLayoutScore(
             );
             softSum += nearbyBedroom ? 4 : -6;
         }
+
+        if (plot && isHabitableRoom(room.type)) {
+            softSum += isNearBoundary(plot, room, 0.45) ? 7 : -10;
+        }
+
+        if (plot && room.type === 'puja') {
+            softSum += isCornerRoom(plot, room) ? 10 : -8;
+
+            const tooCloseToEntrance = entrance && roomDistance(room, entrance) < 1.5;
+            const tooCloseToPassage = passage && roomDistance(room, passage) < 0.5;
+            softSum += tooCloseToEntrance || tooCloseToPassage ? -14 : 9;
+        }
     });
 
     if (dining && living) {
@@ -505,6 +750,43 @@ function computeLayoutScore(
 
     if (entrance && living) {
         softSum += roomDistance(entrance, living) <= 2.5 ? 10 : -8;
+    }
+
+    if (plot && entrance && living) {
+        const livingDepth = distanceFromEntranceAxis(plot, living, facing);
+        const diningDepth = dining ? distanceFromEntranceAxis(plot, dining, facing) : livingDepth + 1;
+        const privateDepths = bedrooms.map((room) => distanceFromEntranceAxis(plot, room, facing));
+
+        softSum += livingDepth <= plot.width * 0.5 || livingDepth <= plot.height * 0.5 ? 10 : -8;
+        softSum += dining ? (diningDepth >= livingDepth - 0.5 ? 6 : -6) : 0;
+        softSum += privateDepths.every((depth) => depth >= livingDepth + 0.5) ? 14 : -12;
+    }
+
+    if (masterBedroom) {
+        const attachedBath = layoutRooms.find(
+            (room) => room.type === 'toilet' && roomDistance(room, masterBedroom) < 0.15
+        );
+        softSum += attachedBath ? 18 : -16;
+
+        if (entrance && plot) {
+            const masterDepth = distanceFromEntranceAxis(plot, masterBedroom, facing);
+            const entranceDepth = distanceFromEntranceAxis(plot, entrance, facing);
+            softSum += masterDepth > entranceDepth + 1 ? 10 : -10;
+        }
+    }
+
+    if (kitchen && dining) {
+        softSum += roomDistance(kitchen, dining) < 0.15 ? 16 : -14;
+    }
+
+    if (passage) {
+        const connectedRooms = layoutRooms.filter(
+            (room) =>
+                room.id !== passage.id &&
+                room.type !== 'balcony' &&
+                roomDistance(room, passage) < 0.15
+        ).length;
+        softSum += connectedRooms >= 3 ? 12 : -10;
     }
 
     const avg = Math.max(0, Math.min(100, softSum / Math.max(1, layoutRooms.length)));
@@ -551,7 +833,7 @@ export function greedyPlaceRooms(
         occupancy.set(key, [...(occupancy.get(key) || []), req]);
     });
 
-    refineCellAssignments(assignments, sorted);
+    refineCellAssignments(assignments, sorted, plot);
 
     const rowWeights = [0, 0, 0];
     const colWeights = [0, 0, 0];
@@ -581,10 +863,11 @@ export function greedyPlaceRooms(
         };
 
         splitRect(cellRect, roomReqs).forEach(({ req, rect }) => {
-            const x = snapToGrid(rect.x);
-            const y = snapToGrid(rect.y);
-            const width = Math.max(1, snapToGrid(rect.width));
-            const height = Math.max(1, snapToGrid(rect.height));
+            const fittedRect = fitRoomToCell(req, rect);
+            const x = fittedRect.x;
+            const y = fittedRect.y;
+            const width = Math.max(1, snapToGrid(fittedRect.width));
+            const height = Math.max(1, snapToGrid(fittedRect.height));
             const cx = x + width / 2;
             const cy = y + height / 2;
             const zone = pickZoneForPoint(zones, cx, cy);
@@ -695,6 +978,247 @@ function candidatePenalty(plot: PlotSettings, rooms: LayoutRoom[]) {
     return Math.max(0, plotArea - usedArea);
 }
 
+function clamp(value: number, min: number, max: number) {
+    return Math.max(min, Math.min(max, value));
+}
+
+function createLayoutRoom(req: RoomReq, rect: Rect, zones: Zone[]): LayoutRoom {
+    const x = snapToGrid(rect.x);
+    const y = snapToGrid(rect.y);
+    const width = Math.max(1, snapToGrid(rect.width));
+    const height = Math.max(1, snapToGrid(rect.height));
+    const zone = pickZoneForPoint(zones, x + width / 2, y + height / 2);
+
+    return {
+        id: req.id,
+        templateId: `dyn_${req.id}`,
+        type: req.type,
+        label: getRoomLabel(req.type),
+        x,
+        y,
+        width,
+        height,
+        zone,
+        score: 0,
+        violation: null,
+    };
+}
+
+function canUseApartmentArchetype(roomReqs: RoomReq[]) {
+    const counts = roomReqs.reduce<Record<string, number>>((acc, req) => {
+        acc[req.type] = (acc[req.type] || 0) + 1;
+        return acc;
+    }, {});
+
+    return (
+        (counts.master_bedroom || 0) >= 1 &&
+        ((counts.bedroom || 0) + (counts.master_bedroom || 0)) >= 2 &&
+        (counts.living_room || 0) >= 1 &&
+        (counts.kitchen || 0) >= 1 &&
+        (counts.dining || 0) >= 1
+    );
+}
+
+function generateApartmentArchetypeLayout(plot: PlotSettings, roomReqs: RoomReq[]) {
+    if (!canUseApartmentArchetype(roomReqs)) {
+        return null;
+    }
+
+    const zones = computeZones(plot);
+    const byType = new Map<RoomType, RoomReq[]>();
+    roomReqs.forEach((req) => {
+        const existing = byType.get(req.type) || [];
+        byType.set(req.type, [...existing, req]);
+    });
+
+    const take = (type: RoomType) => {
+        const list = byType.get(type) || [];
+        return list.shift() || null;
+    };
+
+    const rooms: LayoutRoom[] = [];
+    const w = plot.width;
+    const h = plot.height;
+
+    const topH = snapToGrid(clamp(h * 0.34, 5.5, 9.5));
+    const entranceH = snapToGrid(clamp(h * 0.12, 1.8, 3));
+    const serviceH = snapToGrid(clamp(h * 0.16, 2.2, 4));
+    const usableMiddle = Math.max(4, h - topH - entranceH - serviceH);
+    const passageH = byType.get('passage')?.length ? snapToGrid(clamp(h * 0.08, 1.2, 2)) : 0;
+    const diningH = snapToGrid(Math.max(3.5, usableMiddle - passageH));
+
+    const leftW = snapToGrid(clamp(w * 0.33, 3.8, w * 0.4));
+    const centerW = snapToGrid(clamp(w * 0.31, 3.8, w * 0.36));
+    const rightW = snapToGrid(Math.max(3.8, w - leftW - centerW));
+
+    const balconyReqs = byType.get('balcony') || [];
+    const balconyStrip = balconyReqs.length ? snapToGrid(clamp(w * 0.1, 1.2, 2)) : 0;
+    const rightCoreW = balconyStrip > 0 ? Math.max(3, rightW - balconyStrip) : rightW;
+
+    const xLeft = 0;
+    const xCenter = leftW;
+    const xRight = leftW + centerW;
+    const xBalcony = xRight + rightCoreW;
+
+    const yTop = 0;
+    const yPassage = topH;
+    const yDining = topH + passageH;
+    const yService = topH + passageH + diningH;
+    const yEntrance = h - entranceH;
+
+    const masterReq = take('master_bedroom');
+    if (masterReq) {
+        rooms.push(createLayoutRoom(masterReq, { x: xLeft, y: yTop, width: leftW, height: topH }, zones));
+    }
+
+    const pujaReq = take('puja');
+    const utilityReq = take('utility');
+    const kitchenReq = take('kitchen');
+    const pujaW = pujaReq ? snapToGrid(clamp(centerW * 0.28, 1.6, 2.8)) : 0;
+    const utilityH = utilityReq ? snapToGrid(clamp(topH * 0.22, 1.2, 2)) : 0;
+
+    if (pujaReq) {
+        rooms.push(createLayoutRoom(pujaReq, { x: xCenter, y: yTop, width: pujaW, height: topH }, zones));
+    }
+
+    if (kitchenReq) {
+        rooms.push(createLayoutRoom(kitchenReq, {
+            x: xCenter + pujaW,
+            y: yTop + utilityH,
+            width: centerW - pujaW,
+            height: topH - utilityH,
+        }, zones));
+    }
+
+    if (utilityReq) {
+        rooms.push(createLayoutRoom(utilityReq, {
+            x: xCenter + pujaW,
+            y: yTop,
+            width: centerW - pujaW,
+            height: utilityH,
+        }, zones));
+    }
+
+    const rightBedrooms = [take('bedroom'), take('bedroom'), take('study')].filter(Boolean) as RoomReq[];
+    const upperRightHeight = rightBedrooms.length >= 2 ? snapToGrid(clamp((h - serviceH) * 0.48, 4.2, 7)) : h - serviceH;
+
+    if (rightBedrooms[0]) {
+        rooms.push(createLayoutRoom(rightBedrooms[0], {
+            x: xRight,
+            y: yTop,
+            width: rightCoreW,
+            height: upperRightHeight,
+        }, zones));
+    }
+
+    if (rightBedrooms[1]) {
+        rooms.push(createLayoutRoom(rightBedrooms[1], {
+            x: xRight,
+            y: upperRightHeight,
+            width: rightCoreW,
+            height: h - serviceH - upperRightHeight,
+        }, zones));
+    }
+
+    if (rightBedrooms[2]) {
+        rooms.push(createLayoutRoom(rightBedrooms[2], {
+            x: xLeft,
+            y: topH,
+            width: leftW,
+            height: diningH,
+        }, zones));
+    }
+
+    if (balconyReqs[0]) {
+        rooms.push(createLayoutRoom(balconyReqs[0], {
+            x: xBalcony,
+            y: yTop,
+            width: balconyStrip,
+            height: upperRightHeight,
+        }, zones));
+    }
+
+    if (balconyReqs[1]) {
+        rooms.push(createLayoutRoom(balconyReqs[1], {
+            x: xBalcony,
+            y: upperRightHeight,
+            width: balconyStrip,
+            height: h - serviceH - upperRightHeight,
+        }, zones));
+    }
+
+    const livingReq = take('living_room');
+    if (livingReq) {
+        rooms.push(createLayoutRoom(livingReq, {
+            x: xLeft,
+            y: topH,
+            width: leftW,
+            height: h - topH - entranceH,
+        }, zones));
+    }
+
+    const entranceReq = take('entrance');
+    if (entranceReq) {
+        rooms.push(createLayoutRoom(entranceReq, {
+            x: xLeft,
+            y: yEntrance,
+            width: leftW,
+            height: entranceH,
+        }, zones));
+    }
+
+    const passageReq = take('passage');
+    if (passageReq) {
+        rooms.push(createLayoutRoom(passageReq, {
+            x: xCenter,
+            y: yPassage,
+            width: w - xCenter,
+            height: passageH,
+        }, zones));
+    }
+
+    const diningReq = take('dining');
+    if (diningReq) {
+        rooms.push(createLayoutRoom(diningReq, {
+            x: xCenter,
+            y: yDining,
+            width: centerW,
+            height: diningH,
+        }, zones));
+    }
+
+    const toilets = [take('toilet'), take('toilet'), take('toilet')].filter(Boolean) as RoomReq[];
+    const toiletAreaWidth = centerW + rightCoreW;
+    if (toilets.length > 0) {
+        const eachWidth = snapToGrid(toiletAreaWidth / toilets.length);
+        toilets.forEach((toiletReq, index) => {
+            const isLast = index === toilets.length - 1;
+            const rectWidth = isLast ? (xCenter + toiletAreaWidth) - (xCenter + eachWidth * index) : eachWidth;
+            rooms.push(createLayoutRoom(toiletReq, {
+                x: xCenter + eachWidth * index,
+                y: yService,
+                width: rectWidth,
+                height: serviceH,
+            }, zones));
+        });
+    }
+
+    ['master_bedroom', 'bedroom', 'study', 'kitchen', 'dining', 'puja', 'entrance', 'utility', 'living_room', 'passage'].forEach((type) => {
+        let req = take(type as RoomType);
+        while (req) {
+            rooms.push(createLayoutRoom(req, {
+                x: xCenter,
+                y: yDining,
+                width: centerW,
+                height: diningH,
+            }, zones));
+            req = take(type as RoomType);
+        }
+    });
+
+    return { rooms, zones };
+}
+
 function generateCandidateLayout(
     plot: PlotSettings,
     roomReqs: RoomReq[],
@@ -702,7 +1226,8 @@ function generateCandidateLayout(
     _seed: number
 ) {
     const normalizedReqs = ensureCirculationRooms(roomReqs, plot);
-    const { rooms: initialRooms, zones } = greedyPlaceRooms(plot, normalizedReqs, vastuRules);
+    const archetypeLayout = generateApartmentArchetypeLayout(plot, normalizedReqs);
+    const { rooms: initialRooms, zones } = archetypeLayout || greedyPlaceRooms(plot, normalizedReqs, vastuRules);
 
     const finalRooms = initialRooms
         .map((room) => ({
@@ -751,7 +1276,7 @@ export function generateLayout(
 
     // Generate Walls and Doors to make it "Template Style"
     const walls = generateWallsFromRooms(finalRooms);
-    const doors = generateDoorsForRooms(finalRooms, walls);
+    const doors = generateDoorsForRooms(finalRooms, walls, plot);
 
     // Compute scores
     const roomScores = finalRooms.map((r) => {
@@ -788,8 +1313,15 @@ export function generateLayout(
  * Generate structural walls from room rectangles
  */
 function generateWallsFromRooms(rooms: LayoutRoom[]): Wall[] {
-    type Edge = { x1: number; y1: number; x2: number; y2: number; roomIds: Set<string> };
-    const edgeMap = new Map<string, Edge>();
+    type RawEdge = {
+        orientation: 'H' | 'V';
+        line: number;
+        start: number;
+        end: number;
+        roomId: string;
+    };
+
+    const rawEdges: RawEdge[] = [];
 
     rooms.forEach((r) => {
         const left = snapToGrid(r.x);
@@ -797,40 +1329,52 @@ function generateWallsFromRooms(rooms: LayoutRoom[]): Wall[] {
         const top = snapToGrid(r.y);
         const bottom = snapToGrid(r.y + r.height);
 
-        const edges = [
-            { x1: left, y1: top, x2: right, y2: top },
-            { x1: right, y1: top, x2: right, y2: bottom },
-            { x1: right, y1: bottom, x2: left, y2: bottom },
-            { x1: left, y1: bottom, x2: left, y2: top },
-        ];
-
-        edges.forEach((raw) => {
-            const edge = normalizeEdge(raw.x1, raw.y1, raw.x2, raw.y2);
-            const key = edgeKey(edge);
-            const existing = edgeMap.get(key);
-
-            if (existing) {
-                existing.roomIds.add(r.id);
-            } else {
-                edgeMap.set(key, { ...edge, roomIds: new Set([r.id]) });
-            }
-        });
+        rawEdges.push(
+            { orientation: 'H', line: top, start: left, end: right, roomId: r.id },
+            { orientation: 'H', line: bottom, start: left, end: right, roomId: r.id },
+            { orientation: 'V', line: left, start: top, end: bottom, roomId: r.id },
+            { orientation: 'V', line: right, start: top, end: bottom, roomId: r.id }
+        );
     });
 
-    let idx = 0;
+    const grouped = new Map<string, RawEdge[]>();
+    rawEdges.forEach((edge) => {
+        const key = `${edge.orientation}:${edge.line}`;
+        grouped.set(key, [...(grouped.get(key) || []), edge]);
+    });
+
     const walls: Wall[] = [];
-    for (const edge of edgeMap.values()) {
-        const isExternal = edge.roomIds.size === 1;
-        walls.push({
-            id: `dyn-wall-${idx}`,
-            start: { x: edge.x1, y: edge.y1 },
-            end: { x: edge.x2, y: edge.y2 },
-            thickness: isExternal ? 0.23 : 0.115,
-            isExternal,
-            adjacentRooms: Array.from(edge.roomIds),
-        });
-        idx += 1;
-    }
+    let idx = 0;
+
+    grouped.forEach((edges, key) => {
+        const breakpoints = Array.from(
+            new Set(edges.flatMap((edge) => [edge.start, edge.end]).map((value) => snapToGrid(value, 0.5)))
+        ).sort((a, b) => a - b);
+
+        for (let i = 0; i < breakpoints.length - 1; i++) {
+            const segStart = breakpoints[i];
+            const segEnd = breakpoints[i + 1];
+            if (segEnd - segStart < 0.05) continue;
+
+            const coveringEdges = edges.filter((edge) => edge.start <= segStart + 0.01 && edge.end >= segEnd - 0.01);
+            if (coveringEdges.length === 0) continue;
+
+            const roomIds = Array.from(new Set(coveringEdges.map((edge) => edge.roomId)));
+            const isExternal = roomIds.length === 1;
+            const [orientation, rawLine] = key.split(':');
+            const line = Number(rawLine);
+
+            walls.push({
+                id: `dyn-wall-${idx}`,
+                start: orientation === 'H' ? { x: segStart, y: line } : { x: line, y: segStart },
+                end: orientation === 'H' ? { x: segEnd, y: line } : { x: line, y: segEnd },
+                thickness: isExternal ? 0.23 : 0.115,
+                isExternal,
+                adjacentRooms: roomIds,
+            });
+            idx += 1;
+        }
+    });
 
     return walls;
 }
@@ -838,25 +1382,137 @@ function generateWallsFromRooms(rooms: LayoutRoom[]): Wall[] {
 /**
  * Generate logical doors for the layout
  */
-function generateDoorsForRooms(_rooms: LayoutRoom[], walls: Wall[]): Door[] {
+function getDoorWidth(length: number, preferred = 0.9) {
+    return Math.max(0.75, Math.min(preferred, length - 0.1));
+}
+
+function getWallFacing(wall: Wall): FacingDirection | null {
+    if (!wall.isExternal) return null;
+
+    if (wall.start.y === wall.end.y) {
+        return wall.start.y < wall.end.y || wall.start.x < wall.end.x
+            ? (wall.start.y === 0 ? 'N' : 'S')
+            : null;
+    }
+
+    if (wall.start.x === wall.end.x) {
+        return wall.start.x === 0 ? 'W' : 'E';
+    }
+
+    return null;
+}
+
+function buildAdjacencyMap(walls: Wall[]) {
+    const adjacency = new Map<string, Set<string>>();
+
+    walls
+        .filter((wall) => wall.adjacentRooms.length > 1)
+        .forEach((wall) => {
+            const [roomA, roomB] = wall.adjacentRooms;
+            adjacency.set(roomA, new Set([...(adjacency.get(roomA) || []), roomB]));
+            adjacency.set(roomB, new Set([...(adjacency.get(roomB) || []), roomA]));
+        });
+
+    return adjacency;
+}
+
+function getDoorPositionForConnection(roomA: LayoutRoom, roomB: LayoutRoom) {
+    const types = [roomA.type, roomB.type];
+
+    if (types.includes('entrance') && types.includes('passage')) return 0.35;
+    if (types.includes('entrance') && types.includes('living_room')) return 0.4;
+    if (types.includes('passage') && (types.includes('master_bedroom') || types.includes('bedroom'))) return 0.65;
+    if (types.includes('passage') && types.includes('toilet')) return 0.3;
+    if (types.includes('kitchen') && types.includes('dining')) return 0.55;
+
+    return 0.5;
+}
+
+function generateDoorsForRooms(rooms: LayoutRoom[], walls: Wall[], plot: PlotSettings): Door[] {
     const doors: Door[] = [];
     const usedWallIds = new Set<string>();
+    const roomsById = new Map(rooms.map((room) => [room.id, room]));
+    const roomByType = (type: RoomType) => rooms.find((room) => room.type === type);
+    const facing = getFacingDirection(plot.orientation);
+    const entranceRoom = roomByType('entrance');
+    const adjacency = buildAdjacencyMap(walls);
 
-    const internalWalls = walls.filter((w) => w.adjacentRooms.length > 1);
+    const preferredConnections = new Map<string, RoomType[]>([
+        ['entrance', ['passage', 'living_room', 'dining']],
+        ['passage', ['living_room', 'dining', 'kitchen', 'master_bedroom', 'bedroom', 'study', 'puja', 'toilet', 'utility']],
+        ['living_room', ['dining', 'passage', 'entrance', 'balcony']],
+        ['dining', ['living_room', 'kitchen', 'passage', 'balcony']],
+        ['kitchen', ['utility', 'dining', 'passage']],
+        ['master_bedroom', ['passage', 'toilet', 'balcony']],
+        ['bedroom', ['passage', 'toilet', 'balcony']],
+        ['study', ['passage', 'living_room']],
+        ['puja', ['living_room', 'passage', 'dining']],
+        ['toilet', ['passage', 'master_bedroom', 'bedroom']],
+        ['utility', ['kitchen', 'passage']],
+        ['balcony', ['living_room', 'bedroom', 'master_bedroom', 'dining']],
+    ]);
 
-    internalWalls.forEach((wall, idx) => {
+    const addDoorForWall = (
+        wall: Wall,
+        indexSeed: string,
+        preferredWidth = 0.9,
+        position = 0.5
+    ) => {
+        if (usedWallIds.has(wall.id)) return;
+
         const length = wallLength(wall);
         if (length < 0.9) return;
 
         doors.push({
-            id: `dyn-door-${idx}`,
+            id: `dyn-door-${indexSeed}`,
             wallId: wall.id,
-            position: 0.5,
-            width: Math.min(0.9, length - 0.1),
+            position,
+            width: getDoorWidth(length, preferredWidth),
             swingAngle: 90,
-            swingDirection: length > 1.5 ? 'left' : 'right',
+            swingDirection: length >= 1.4 ? 'left' : 'right',
         });
         usedWallIds.add(wall.id);
+    };
+
+    if (entranceRoom) {
+        const entranceBoundaryWalls = walls
+            .filter((wall) => wall.isExternal && wall.adjacentRooms[0] === entranceRoom.id)
+            .filter((wall) => wallLength(wall) >= 0.9);
+
+        const facingWall =
+            entranceBoundaryWalls.find((wall) => getWallFacing(wall) === facing) ||
+            entranceBoundaryWalls.sort((a, b) => wallLength(b) - wallLength(a))[0];
+
+        if (facingWall) {
+            addDoorForWall(facingWall, 'main', 1.05, 0.5);
+        }
+    }
+
+    const connectionPairs = new Set<string>();
+    const pairKey = (a: string, b: string) => [a, b].sort().join('::');
+
+    rooms.forEach((room) => {
+        const adjacentIds = Array.from(adjacency.get(room.id) || []);
+        if (adjacentIds.length === 0) return;
+
+        const preferredTypes = preferredConnections.get(room.type) || [];
+        const targetRoomId = preferredTypes
+            .map((type) => adjacentIds.find((adjacentId) => roomsById.get(adjacentId)?.type === type))
+            .find(Boolean);
+
+        if (!targetRoomId) return;
+
+        connectionPairs.add(pairKey(room.id, targetRoomId));
+    });
+
+    const internalWalls = walls.filter((w) => w.adjacentRooms.length > 1);
+    internalWalls.forEach((wall, idx) => {
+        const [roomA, roomB] = wall.adjacentRooms;
+        if (!connectionPairs.has(pairKey(roomA, roomB))) return;
+        const roomAData = roomsById.get(roomA);
+        const roomBData = roomsById.get(roomB);
+        const position = roomAData && roomBData ? getDoorPositionForConnection(roomAData, roomBData) : 0.5;
+        addDoorForWall(wall, `int-${idx}`, 0.9, position);
     });
 
     const needsEntrance = !doors.some((door) => {
@@ -865,19 +1521,11 @@ function generateDoorsForRooms(_rooms: LayoutRoom[], walls: Wall[]): Door[] {
     });
 
     if (needsEntrance) {
-        const entranceWall = walls.find(
-            (wall) => wall.isExternal && wallLength(wall) >= 0.9
-        );
+        const entranceWall = walls.find((wall) => wall.isExternal && getWallFacing(wall) === facing && wallLength(wall) >= 0.9)
+            || walls.find((wall) => wall.isExternal && wallLength(wall) >= 0.9);
 
         if (entranceWall) {
-            doors.push({
-                id: `dyn-door-ext`,
-                wallId: entranceWall.id,
-                position: 0.5,
-                width: Math.min(0.9, wallLength(entranceWall) - 0.1),
-                swingAngle: 90,
-                swingDirection: 'right',
-            });
+            addDoorForWall(entranceWall, 'ext', 1.05, 0.5);
         }
     }
 

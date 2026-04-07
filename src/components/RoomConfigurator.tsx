@@ -25,11 +25,12 @@ const ROOM_TYPES: Array<{ type: RoomType; label: string; defaultArea: number; ca
 ];
 
 export function RoomConfigurator() {
-    const { generateDynamicLayout, plot } = useStore();
+    const { generateDynamicLayout, plot, testGeminiConnection } = useStore();
     const [rooms, setRooms] = useState<RoomConfig[]>([]);
     const [selectedType, setSelectedType] = useState('');
     const [houseDiffusionText, setHouseDiffusionText] = useState('');
     const [isGenerating, setIsGenerating] = useState(false);
+    const [isTestingGemini, setIsTestingGemini] = useState(false);
 
     const addRoom = () => {
         if (!selectedType) return;
@@ -82,12 +83,13 @@ export function RoomConfigurator() {
     const generateExamplePlan = () => {
         generateDynamicLayout([
             { id: 'ai_master', type: 'master_bedroom', targetArea: 20, priority: 1 },
-            { id: 'ai_bedroom', type: 'bedroom', targetArea: 14, priority: 2 },
-            { id: 'ai_living', type: 'living_room', targetArea: 24, priority: 3 },
-            { id: 'ai_kitchen', type: 'kitchen', targetArea: 10, priority: 4 },
-            { id: 'ai_dining', type: 'dining', targetArea: 10, priority: 5 },
-            { id: 'ai_puja', type: 'puja', targetArea: 5, priority: 6 },
-            { id: 'ai_toilet', type: 'toilet', targetArea: 6, priority: 7 },
+            { id: 'ai_master_bath', type: 'toilet', targetArea: 5, priority: 2 },
+            { id: 'ai_bedroom', type: 'bedroom', targetArea: 14, priority: 3 },
+            { id: 'ai_living', type: 'living_room', targetArea: 24, priority: 4 },
+            { id: 'ai_kitchen', type: 'kitchen', targetArea: 10, priority: 5 },
+            { id: 'ai_dining', type: 'dining', targetArea: 10, priority: 6 },
+            { id: 'ai_puja', type: 'puja', targetArea: 5, priority: 7 },
+            { id: 'ai_toilet', type: 'toilet', targetArea: 6, priority: 8 },
         ]);
     };
 
@@ -102,6 +104,15 @@ export function RoomConfigurator() {
             alert(`HouseDiffusion generation failed: ${error}`);
         } finally {
             setIsGenerating(false);
+        }
+    };
+
+    const handleTestGemini = async () => {
+        setIsTestingGemini(true);
+        try {
+            await testGeminiConnection();
+        } finally {
+            setIsTestingGemini(false);
         }
     };
 
@@ -246,7 +257,7 @@ export function RoomConfigurator() {
                     <textarea
                         value={houseDiffusionText}
                         onChange={(e) => setHouseDiffusionText(e.target.value)}
-                        placeholder="Describe your dream home... e.g., '3 bedroom house with kitchen next to living room'"
+                        placeholder="Describe your dream home... e.g., '3 bedroom apartment with central dining, living near entrance, kitchen with utility, attached toilets, puja corner, and balcony'"
                         className="w-full px-4 py-3 bg-[#fbf6e8] border border-[#d8cab0] rounded-xl focus:ring-2 focus:ring-[#146d71] outline-none text-sm text-[#4f4428] resize-none transition-colors"
                         rows={3}
                     />
@@ -256,6 +267,13 @@ export function RoomConfigurator() {
                         className="w-full px-4 py-3 bg-[#4f4428] text-white rounded-xl hover:bg-[#3f351e] transition-all text-sm font-bold disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-3 uppercase tracking-widest"
                     >
                         <span>{isGenerating ? 'Generating...' : 'Generate with HouseDiffusion'}</span>
+                    </button>
+                    <button
+                        onClick={handleTestGemini}
+                        disabled={isTestingGemini}
+                        className="w-full px-4 py-3 bg-[#efe6c6] text-[#146d71] rounded-xl border border-[#d8cab0] hover:bg-[#e5dab5] transition-all text-sm font-bold disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-3 uppercase tracking-widest"
+                    >
+                        <span>{isTestingGemini ? 'Testing Gemini...' : 'Test Gemini Connection'}</span>
                     </button>
                 </div>
 
