@@ -1,6 +1,3 @@
-// App.tsx
-// Main application component for VāstuCAD
-
 import { useEffect } from 'react';
 import { ControlPanel } from './components/ControlPanel';
 import { PlanCanvas } from './components/PlanCanvas';
@@ -10,7 +7,6 @@ import { useStore } from './store/useStore';
 function App() {
     const { showToast, toastMessage, hideToast, getProjectState, loadProject } = useStore();
 
-    // Auto-save to localStorage
     useEffect(() => {
         const saveInterval = setInterval(() => {
             const projectState = getProjectState();
@@ -20,7 +16,6 @@ function App() {
         return () => clearInterval(saveInterval);
     }, [getProjectState]);
 
-    // Auto-load from localStorage on mount
     useEffect(() => {
         const saved = localStorage.getItem('vastucad-autosave');
         if (saved) {
@@ -34,89 +29,103 @@ function App() {
     }, [loadProject]);
 
     return (
-        <div className="min-h-screen text-slate-100 p-6 font-['Outfit']">
-            {/* Toast notification */}
+        <div className="min-h-screen px-4 py-4 md:px-5 md:py-6 text-[#4f4428] font-['Outfit']">
             {showToast && (
                 <div className="fixed top-6 right-6 z-50 animate-fadeIn">
-                    <div className="glass px-6 py-3 rounded-xl flex items-center gap-3 border border-indigo-500/30">
-                        <span className="text-xl text-green-400">✓</span>
+                    <div className="glass px-5 py-3 rounded-2xl flex items-center gap-3">
+                        <span className="text-sm font-bold uppercase tracking-[0.2em] text-[#146d71]">
+                            Notice
+                        </span>
                         <span className="font-medium">{toastMessage}</span>
                         <button
                             onClick={hideToast}
-                            className="ml-2 text-gray-400 hover:text-white transition-colors"
+                            className="ml-2 text-[#8a7b53] hover:text-[#4f4428] transition-colors"
                         >
-                            ×
+                            x
                         </button>
                     </div>
                 </div>
             )}
 
-            {/* Main content */}
-            <div className="max-w-[1800px] mx-auto animate-fadeIn relative z-10">
-                <div className="flex gap-6 items-start">
-                    {/* Left Sidebar - Control Panel */}
-                    <ControlPanel />
+            <div className="max-w-[1880px] mx-auto animate-fadeIn relative z-10">
+                <div className="grid grid-cols-1 2xl:grid-cols-[340px_minmax(0,1fr)_390px] gap-4 lg:gap-6 items-start">
+                    <div className="2xl:sticky 2xl:top-6">
+                        <ControlPanel />
+                    </div>
 
-                    {/* Center - Canvas Area */}
-                    <div className="flex-1 space-y-6">
-                        {/* Header */}
-                        <div className="glass-card p-6">
-                            <div className="flex items-center justify-between">
+                    <div className="space-y-6">
+                        <div className="glass-card p-7">
+                            <div className="flex flex-col gap-6 xl:flex-row xl:items-end xl:justify-between">
                                 <div>
-                                    <h1 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 tracking-tight">
-                                        VāstuCAD
+                                    <div className="text-[11px] uppercase tracking-[0.35em] text-[#8a7b53] font-semibold mb-3">
+                                        Residential Planning Studio
+                                    </div>
+                                    <h1 className="text-4xl md:text-5xl font-extrabold text-[#4f4428] tracking-tight">
+                                        VastuCAD
                                     </h1>
-                                    <p className="text-indigo-200 mt-2 font-medium">
-                                        Generative Artificial Intelligence Floor Plan Design
+                                    <p className="text-[#7a6d46] mt-3 font-medium text-lg max-w-2xl">
+                                        Professional floor-plan drafting with guided AI-assisted layout generation,
+                                        cleaner sheet presentation, and architectural room composition.
                                     </p>
                                 </div>
-                                <div className="text-right glass px-4 py-2 rounded-lg">
-                                    <div className="text-sm text-indigo-100 font-semibold tracking-wide">GEMINI INTEGRATED</div>
-                                    <div className="text-xs text-indigo-300 mt-1 flex items-center justify-end gap-1"><span className="w-2 h-2 rounded-full bg-green-400 animate-pulse"></span> Auto-sync active</div>
+
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 xl:min-w-[320px]">
+                                    <div className="rounded-2xl border border-[#d6c8a6] bg-[#fbf6e6] px-4 py-4">
+                                        <div className="text-[11px] uppercase tracking-[0.25em] text-[#8a7b53] font-semibold">
+                                            Engine
+                                        </div>
+                                        <div className="mt-2 text-xl font-bold text-[#146d71]">Gemini</div>
+                                        <div className="text-sm text-[#7a6d46]">Layout assist enabled</div>
+                                    </div>
+                                    <div className="rounded-2xl border border-[#d6c8a6] bg-[#fbf6e6] px-4 py-4">
+                                        <div className="text-[11px] uppercase tracking-[0.25em] text-[#8a7b53] font-semibold">
+                                            Output
+                                        </div>
+                                        <div className="mt-2 text-xl font-bold text-[#4f4428]">Draft Sheet</div>
+                                        <div className="text-sm text-[#7a6d46]">Architectural presentation</div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
-                        {/* Plan View */}
                         <PlanCanvas />
 
-                        {/* Instructions */}
                         <div className="glass-card p-5">
-                            <h3 className="font-bold text-indigo-200 mb-3 tracking-wide">QUICK START</h3>
-                            <div className="grid grid-cols-3 gap-6 text-sm text-slate-300">
-                                <div className="glass p-4 rounded-xl border-t border-t-white/10">
-                                    <span className="font-semibold text-indigo-400 text-lg">1. Template</span>
-                                    <p className="text-xs mt-2 text-slate-400 leading-relaxed">Choose a pre-designed civil plan (2BHK, 3BHK, 4BHK) or start blank.</p>
+                            <h3 className="font-bold text-[#4f4428] mb-3 tracking-wide">Workflow</h3>
+                            <div className="grid md:grid-cols-3 gap-4 text-sm text-[#7a6d46]">
+                                <div className="rounded-2xl border border-[#d8cab0] bg-[#fbf6e8] p-4">
+                                    <span className="font-semibold text-[#146d71] text-lg">1. Base</span>
+                                    <p className="text-xs mt-2 leading-relaxed">
+                                        Select a template or build a room program from the Architect panel.
+                                    </p>
                                 </div>
-                                <div className="glass p-4 rounded-xl border-t border-t-white/10">
-                                    <span className="font-semibold text-purple-400 text-lg">2. Configure</span>
-                                    <p className="text-xs mt-2 text-slate-400 leading-relaxed">Set plot size and utilize AI Gemini to automatically generate optimal layouts.</p>
+                                <div className="rounded-2xl border border-[#d8cab0] bg-[#fbf6e8] p-4">
+                                    <span className="font-semibold text-[#146d71] text-lg">2. Refine</span>
+                                    <p className="text-xs mt-2 leading-relaxed">
+                                        Tune plot size, orientation, and interaction mode to shape the layout.
+                                    </p>
                                 </div>
-                                <div className="glass p-4 rounded-xl border-t border-t-white/10">
-                                    <span className="font-semibold text-pink-400 text-lg">3. Export</span>
-                                    <p className="text-xs mt-2 text-slate-400 leading-relaxed">Download precise architectural blueprints in transparent PNG or detailed PDF formats.</p>
+                                <div className="rounded-2xl border border-[#d8cab0] bg-[#fbf6e8] p-4">
+                                    <span className="font-semibold text-[#146d71] text-lg">3. Deliver</span>
+                                    <p className="text-xs mt-2 leading-relaxed">
+                                        Export the final sheet as PNG, PDF, or JSON once the plan reads cleanly.
+                                    </p>
                                 </div>
                             </div>
                         </div>
 
-                        {/* Footer */}
-                        <div className="text-center text-sm text-slate-500 py-4">
-                            <p className="font-medium tracking-widest text-xs uppercase opacity-50">
-                                VāstuCAD ✦ Next-Generation Architecture
+                        <div className="text-center text-sm text-[#8a7b53] py-2">
+                            <p className="font-medium tracking-[0.3em] text-xs uppercase opacity-80">
+                                VastuCAD Studio
                             </p>
                         </div>
                     </div>
 
-                    {/* Right Sidebar - Room Configurator */}
-                    <div className="w-[420px] shrink-0">
+                    <div className="w-full 2xl:sticky 2xl:top-6">
                         <RoomConfigurator />
                     </div>
                 </div>
             </div>
-
-            {/* Background elements */}
-            <div className="fixed top-[-10%] left-[-10%] w-[40%] h-[40%] bg-indigo-600/20 rounded-full blur-[120px] pointer-events-none -z-10 animate-pulse-glow"></div>
-            <div className="fixed bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-purple-600/20 rounded-full blur-[120px] pointer-events-none -z-10 animate-pulse-glow" style={{ animationDelay: '1s' }}></div>
         </div>
     );
 }

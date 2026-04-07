@@ -1,7 +1,7 @@
 // utils/autoLayout.ts
 // Lightweight, client-side autolayout with Vedic Vastu awareness
 
-import type { PlotSettings, Room, RoomType, Zone, ZoneId, VastuRules, ComplianceReport } from '../types';
+import type { PlotSettings, Room, RoomType, Zone, ZoneId, VastuRules, ComplianceReport, Wall, Door, Furniture } from '../types';
 import { computeZones, pickZoneForPoint } from './zoneUtils';
 import { calculateRoomVastuScore, getRoomLabel } from './vastuUtils';
 import vastuRulesData from '../vastu_rules.json';
@@ -19,7 +19,21 @@ export type RoomReq = {
 
 type LayoutRoom = Room;
 
-type FreeRect = { zoneId: ZoneId; x: number; y: number; w: number; h: number };
+type LayoutScore = { score: number; hardViolation: { roomId: string; reason: string } | null };
+type GridCell = { row: 0 | 1 | 2; col: 0 | 1 | 2 };
+type Rect = { x: number; y: number; width: number; height: number };
+
+const ZONE_TO_CELL: Record<ZoneId, GridCell> = {
+    NW: { row: 0, col: 0 },
+    N: { row: 0, col: 1 },
+    NE: { row: 0, col: 2 },
+    W: { row: 1, col: 0 },
+    C: { row: 1, col: 1 },
+    E: { row: 1, col: 2 },
+    SW: { row: 2, col: 0 },
+    S: { row: 2, col: 1 },
+    SE: { row: 2, col: 2 },
+};
 
 /**
  * Simple deterministic pseudo-random with seed (mulberry32)
@@ -34,14 +48,398 @@ export function mulberry32(seed: number) {
     };
 }
 
+function snapToGrid(value: number, step = 0.5) {
+    return Math.round(value / step) * step;
+}
+
+function normalizeEdge(
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number
+): { x1: number; y1: number; x2: number; y2: number } {
+    if (x1 < x2 || (x1 === x2 && y1 < y2)) {
+        return { x1, y1, x2, y2 };
+    }
+    return { x1: x2, y1: y2, x2: x1, y2: y1 };
+}
+
+function edgeKey(edge: { x1: number; y1: number; x2: number; y2: number }) {
+    return `${edge.x1},${edge.y1},${edge.x2},${edge.y2}`;
+}
+
+function wallLength(edge: { x1: number; y1: number; x2: number; y2: number } | { start: { x: number; y: number }; end: { x: number; y: number } }) {
+    const x1 = 'x1' in edge ? edge.x1 : edge.start.x;
+    const y1 = 'y1' in edge ? edge.y1 : edge.start.y;
+    const x2 = 'x2' in edge ? edge.x2 : edge.end.x;
+    const y2 = 'y2' in edge ? edge.y2 : edge.end.y;
+    return Math.hypot(x2 - x1, y2 - y1);
+}
+
+function overlapAmount(aStart: number, aEnd: number, bStart: number, bEnd: number) {
+    return Math.max(0, Math.min(aEnd, bEnd) - Math.max(aStart, bStart));
+}
+
+function roomsOverlap(roomA: LayoutRoom, roomB: LayoutRoom) {
+    const overlapX = overlapAmount(roomA.x, roomA.x + roomA.width, roomB.x, roomB.x + roomB.width);
+    const overlapY = overlapAmount(roomA.y, roomA.y + roomA.height, roomB.y, roomB.y + roomB.height);
+    return overlapX > 0.05 && overlapY > 0.05;
+}
+
+function roomDistance(roomA: LayoutRoom, roomB: LayoutRoom) {
+    const dx = Math.max(0, Math.max(roomA.x - (roomB.x + roomB.width), roomB.x - (roomA.x + roomA.width)));
+    const dy = Math.max(0, Math.max(roomA.y - (roomB.y + roomB.height), roomB.y - (roomA.y + roomA.height)));
+    return Math.hypot(dx, dy);
+}
+
+function getRoomArea(room: LayoutRoom) {
+    return room.width * room.height;
+}
+
+function isNearBoundary(plot: PlotSettings, room: LayoutRoom, tolerance = 0.35) {
+    return (
+        room.x <= tolerance ||
+        room.y <= tolerance ||
+        plot.width - (room.x + room.width) <= tolerance ||
+        plot.height - (room.y + room.height) <= tolerance
+    );
+}
+
+function getPreferredZones(roomType: RoomType, rules: VastuRules): ZoneId[] {
+    const rule = rules.room_rules[roomType];
+    const base = [...(rule?.preferred || []), ...(rule?.allowed || [])];
+
+    if (base.length > 0) {
+        return Array.from(new Set(base));
+    }
+
+    switch (roomType) {
+        case 'master_bedroom':
+            return ['SW', 'S', 'W'];
+        case 'bedroom':
+            return ['NW', 'N', 'W'];
+        case 'living_room':
+            return ['N', 'NE', 'C', 'E'];
+        case 'kitchen':
+            return ['SE', 'E', 'S'];
+        case 'dining':
+            return ['C', 'S', 'E'];
+        case 'puja':
+            return ['NE', 'E', 'N'];
+        case 'toilet':
+            return ['W', 'NW', 'S'];
+        case 'entrance':
+            return ['E', 'N', 'NE'];
+        case 'utility':
+            return ['SE', 'S', 'E'];
+        case 'balcony':
+            return ['N', 'E', 'W'];
+        case 'staircase':
+            return ['SW', 'S', 'W'];
+        case 'study':
+            return ['E', 'N', 'C'];
+        case 'passage':
+            return ['C', 'W', 'E'];
+        default:
+            return ['C'];
+    }
+}
+
+function cellKey(cell: GridCell) {
+    return `${cell.row}-${cell.col}`;
+}
+
+function areaOfReqs(roomReqs: RoomReq[]) {
+    return roomReqs.reduce((sum, req) => sum + req.targetArea, 0);
+}
+
+function distributeSpan(total: number, weights: number[], active: boolean[], minSize: number) {
+    const result = [0, 0, 0];
+    const activeIndexes = active
+        .map((enabled, index) => (enabled ? index : -1))
+        .filter((index) => index >= 0);
+
+    if (activeIndexes.length === 0) {
+        return result;
+    }
+
+    const reserved = activeIndexes.length * minSize;
+    const remaining = Math.max(0, total - reserved);
+    const totalWeight = activeIndexes.reduce((sum, index) => sum + Math.max(0, weights[index]), 0);
+
+    activeIndexes.forEach((index) => {
+        const share = totalWeight > 0 ? Math.max(0, weights[index]) / totalWeight : 1 / activeIndexes.length;
+        result[index] = minSize + remaining * share;
+    });
+
+    return result;
+}
+
+function splitRect(rect: Rect, roomReqs: RoomReq[]): Array<{ req: RoomReq; rect: Rect }> {
+    if (roomReqs.length === 0) {
+        return [];
+    }
+
+    if (roomReqs.length === 1) {
+        return [{ req: roomReqs[0], rect }];
+    }
+
+    const sorted = [...roomReqs].sort((a, b) => b.targetArea - a.targetArea);
+    const targetHalf = areaOfReqs(sorted) / 2;
+    let running = 0;
+    let splitIndex = 1;
+
+    while (splitIndex < sorted.length - 1 && running + sorted[splitIndex - 1].targetArea < targetHalf) {
+        running += sorted[splitIndex - 1].targetArea;
+        splitIndex += 1;
+    }
+
+    const firstGroup = sorted.slice(0, splitIndex);
+    const secondGroup = sorted.slice(splitIndex);
+    const firstArea = areaOfReqs(firstGroup);
+    const totalArea = Math.max(1, firstArea + areaOfReqs(secondGroup));
+    const splitVertical = rect.width >= rect.height;
+
+    if (splitVertical) {
+        const firstWidth = rect.width * (firstArea / totalArea);
+        return [
+            ...splitRect({ x: rect.x, y: rect.y, width: firstWidth, height: rect.height }, firstGroup),
+            ...splitRect({ x: rect.x + firstWidth, y: rect.y, width: rect.width - firstWidth, height: rect.height }, secondGroup),
+        ];
+    }
+
+    const firstHeight = rect.height * (firstArea / totalArea);
+    return [
+        ...splitRect({ x: rect.x, y: rect.y, width: rect.width, height: firstHeight }, firstGroup),
+        ...splitRect({ x: rect.x, y: rect.y + firstHeight, width: rect.width, height: rect.height - firstHeight }, secondGroup),
+    ];
+}
+
+function refineCellAssignments(assignments: Map<string, GridCell>, sorted: RoomReq[]) {
+    const getAssigned = (type: RoomType) => sorted.find((req) => req.type === type && assignments.has(req.id));
+
+    const kitchen = getAssigned('kitchen');
+    const utility = getAssigned('utility');
+    const living = getAssigned('living_room');
+    const entrance = getAssigned('entrance');
+    const dining = getAssigned('dining');
+    const passage = getAssigned('passage');
+
+    if (passage) {
+        assignments.set(passage.id, { row: 1, col: 1 });
+    }
+
+    if (kitchen && utility) {
+        const kitchenCell = assignments.get(kitchen.id)!;
+        assignments.set(utility.id, { row: kitchenCell.row, col: Math.max(0, kitchenCell.col - 1) as 0 | 1 | 2 });
+    }
+
+    if (living && entrance) {
+        assignments.set(entrance.id, { row: 1, col: 2 });
+    }
+
+    if (living && dining) {
+        const livingCell = assignments.get(living.id)!;
+        assignments.set(dining.id, { row: Math.min(2, livingCell.row + 1) as 0 | 1 | 2, col: livingCell.col });
+    }
+}
+
+function ensureCirculationRooms(roomReqs: RoomReq[], plot: PlotSettings): RoomReq[] {
+    const withCirculation = [...roomReqs];
+    const hasEntrance = withCirculation.some((req) => req.type === 'entrance');
+    const hasPassage = withCirculation.some((req) => req.type === 'passage');
+    const habitableRooms = withCirculation.filter(
+        (req) => !['toilet', 'utility', 'balcony', 'entrance', 'passage'].includes(req.type)
+    ).length;
+
+    if (!hasEntrance) {
+        withCirculation.push({
+            id: 'auto_entrance',
+            type: 'entrance',
+            targetArea: Math.max(4, Math.min(6, plot.width * 0.35)),
+            priority: 2,
+        });
+    }
+
+    if (!hasPassage && habitableRooms >= 4) {
+        withCirculation.push({
+            id: 'auto_passage',
+            type: 'passage',
+            targetArea: Math.max(5, Math.min(8, plot.height * 0.45)),
+            priority: 3,
+        });
+    }
+
+    return withCirculation;
+}
+
+function attachFurniture(room: LayoutRoom, items: Array<Omit<Furniture, 'id'>>) {
+    return {
+        ...room,
+        furniture: items.map((item, index) => ({
+            ...item,
+            id: `${room.id}-f-${index}`,
+        })),
+    };
+}
+
+function generateFurnitureForRoom(room: LayoutRoom): LayoutRoom {
+    const inset = 0.25;
+
+    if (room.type === 'master_bedroom' || room.type === 'bedroom') {
+        const bedWidth = Math.min(room.width - inset * 2, 2);
+        const bedHeight = Math.min(room.height - inset * 2, 2.1);
+        return attachFurniture(room, [
+            {
+                type: 'bed',
+                x: room.x + inset,
+                y: room.y + inset,
+                width: Math.max(1.5, bedWidth),
+                height: Math.max(1.9, bedHeight),
+                rotation: 0,
+            },
+            {
+                type: 'wardrobe',
+                x: room.x + room.width - 0.7,
+                y: room.y + inset,
+                width: 0.45,
+                height: Math.max(1.2, room.height * 0.45),
+                rotation: 0,
+            },
+        ]);
+    }
+
+    if (room.type === 'living_room') {
+        return attachFurniture(room, [
+            {
+                type: 'sofa',
+                x: room.x + inset,
+                y: room.y + room.height * 0.2,
+                width: Math.max(1.8, room.width * 0.32),
+                height: Math.max(0.75, room.height * 0.18),
+                rotation: 0,
+            },
+            {
+                type: 'coffee_table',
+                x: room.x + room.width * 0.42,
+                y: room.y + room.height * 0.42,
+                width: Math.max(0.8, room.width * 0.18),
+                height: Math.max(0.5, room.height * 0.12),
+                rotation: 0,
+            },
+        ]);
+    }
+
+    if (room.type === 'dining') {
+        return attachFurniture(room, [
+            {
+                type: 'dining_table',
+                x: room.x + room.width * 0.22,
+                y: room.y + room.height * 0.24,
+                width: Math.max(1.2, room.width * 0.48),
+                height: Math.max(0.85, room.height * 0.34),
+                rotation: 0,
+            },
+        ]);
+    }
+
+    if (room.type === 'kitchen') {
+        return attachFurniture(room, [
+            {
+                type: 'counter',
+                x: room.x + inset,
+                y: room.y + inset,
+                width: room.width - inset * 2,
+                height: 0.55,
+                rotation: 0,
+            },
+            {
+                type: 'counter',
+                x: room.x + room.width - 0.55 - inset,
+                y: room.y + inset,
+                width: 0.55,
+                height: room.height - inset * 2,
+                rotation: 0,
+            },
+            {
+                type: 'stove',
+                x: room.x + room.width * 0.25,
+                y: room.y + inset + 0.08,
+                width: 0.7,
+                height: 0.45,
+                rotation: 0,
+            },
+        ]);
+    }
+
+    if (room.type === 'toilet') {
+        return attachFurniture(room, [
+            {
+                type: 'wc',
+                x: room.x + inset,
+                y: room.y + inset,
+                width: 0.75,
+                height: 0.55,
+                rotation: 0,
+            },
+            {
+                type: 'basin',
+                x: room.x + room.width - 0.7 - inset,
+                y: room.y + inset,
+                width: 0.55,
+                height: 0.4,
+                rotation: 0,
+            },
+            {
+                type: 'shower',
+                x: room.x + room.width - 1 - inset,
+                y: room.y + room.height - 1 - inset,
+                width: 0.9,
+                height: 0.9,
+                rotation: 0,
+            },
+        ]);
+    }
+
+    if (room.type === 'entrance' || room.type === 'passage') {
+        return attachFurniture(room, [
+            {
+                type: 'console',
+                x: room.x + room.width * 0.25,
+                y: room.y + room.height * 0.72,
+                width: Math.max(0.7, room.width * 0.5),
+                height: 0.18,
+                rotation: 0,
+            },
+        ]);
+    }
+
+    return room;
+}
+
 /**
  * Compute layout score for optimization
  */
 function computeLayoutScore(
     layoutRooms: LayoutRoom[],
-    _rules: VastuRules
-): { score: number; hardViolation: { roomId: string; reason: string } | null } {
+    _rules: VastuRules,
+    plot?: PlotSettings
+): LayoutScore {
     let softSum = 0;
+
+    for (let i = 0; i < layoutRooms.length; i++) {
+        for (let j = i + 1; j < layoutRooms.length; j++) {
+            if (roomsOverlap(layoutRooms[i], layoutRooms[j])) {
+                return {
+                    score: -Infinity,
+                    hardViolation: {
+                        roomId: layoutRooms[i].id,
+                        reason: `${layoutRooms[i].label} overlaps ${layoutRooms[j].label}`,
+                    },
+                };
+            }
+        }
+    }
 
     // Specific constraint: Puja room and Toilet should never be together (common wall or adjacent)
     const puja = layoutRooms.find((r) => r.type === 'puja');
@@ -49,13 +447,7 @@ function computeLayoutScore(
 
     if (puja) {
         for (const toilet of toilets) {
-            // Check if they are adjacent or sharing a wall (simplified for now: distance check)
-            // If they are within 0.1m of each other, consider it a violation
-            const dx = Math.max(0, Math.abs(puja.x - toilet.x) - (puja.width + toilet.width) / 2);
-            const dy = Math.max(0, Math.abs(puja.y - toilet.y) - (puja.height + toilet.height) / 2);
-
-            // Simplified adjacency check: if they are very close or touching
-            if (dx < 0.1 && dy < 0.1) {
+            if (roomDistance(puja, toilet) < 0.1) {
                 return {
                     score: -Infinity,
                     hardViolation: { roomId: puja.id, reason: 'Puja room near Toilet (Forbidden)' },
@@ -75,7 +467,47 @@ function computeLayoutScore(
         softSum += vst.score;
     }
 
-    const avg = softSum / Math.max(1, layoutRooms.length);
+    const kitchen = layoutRooms.find((r) => r.type === 'kitchen');
+    const living = layoutRooms.find((r) => r.type === 'living_room');
+    const dining = layoutRooms.find((r) => r.type === 'dining');
+    const entrance = layoutRooms.find((r) => r.type === 'entrance');
+
+    layoutRooms.forEach((room) => {
+        if (plot && (room.type === 'balcony' || room.type === 'entrance')) {
+            softSum += isNearBoundary(plot, room) ? 14 : -18;
+        }
+
+        if (plot && room.type === 'utility') {
+            softSum += isNearBoundary(plot, room) ? 8 : -10;
+        }
+
+        if (room.type === 'utility' && kitchen) {
+            softSum += roomDistance(room, kitchen) <= 1.5 ? 10 : -8;
+        }
+
+        if (room.type === 'toilet') {
+            const nearbyBedroom = layoutRooms.some(
+                (other) =>
+                    (other.type === 'bedroom' || other.type === 'master_bedroom') &&
+                    roomDistance(room, other) <= 1.25
+            );
+            softSum += nearbyBedroom ? 4 : -6;
+        }
+    });
+
+    if (dining && living) {
+        softSum += roomDistance(dining, living) <= 1.5 ? 8 : -6;
+    }
+
+    if (dining && kitchen) {
+        softSum += roomDistance(dining, kitchen) <= 1.5 ? 10 : -6;
+    }
+
+    if (entrance && living) {
+        softSum += roomDistance(entrance, living) <= 2.5 ? 10 : -8;
+    }
+
+    const avg = Math.max(0, Math.min(100, softSum / Math.max(1, layoutRooms.length)));
     return { score: Math.round(avg), hardViolation: null };
 }
 
@@ -89,133 +521,89 @@ export function greedyPlaceRooms(
     rules: VastuRules
 ): { rooms: LayoutRoom[]; zones: Zone[] } {
     const zones = computeZones(plot);
-    const freeRects: FreeRect[] = zones.map((z) => ({
-        zoneId: z.id,
-        x: z.x,
-        y: z.y,
-        w: z.w,
-        h: z.h,
-    }));
-
-    // Sort by priority and area
     const sorted = [...rooms].sort(
         (a, b) => (a.priority || 5) - (b.priority || 5) || b.targetArea - a.targetArea
     );
+    const assignments = new Map<string, GridCell>();
+    const occupancy = new Map<string, RoomReq[]>();
+
+    sorted.forEach((req, index) => {
+        const preferredZones = getPreferredZones(req.type, rules);
+        const candidateCells = Array.from(
+            new Set(preferredZones.map((zoneId) => JSON.stringify(ZONE_TO_CELL[zoneId])))
+        ).map((raw) => JSON.parse(raw) as GridCell);
+
+        let bestCell = candidateCells[0] || { row: 1, col: 1 as 0 | 1 | 2 };
+        let bestScore = Number.POSITIVE_INFINITY;
+
+        candidateCells.forEach((cell, candidateIndex) => {
+            const key = cellKey(cell);
+            const area = areaOfReqs(occupancy.get(key) || []);
+            const score = area + candidateIndex * 4 + ((index + candidateIndex) % 3);
+            if (score < bestScore) {
+                bestScore = score;
+                bestCell = cell;
+            }
+        });
+
+        assignments.set(req.id, bestCell);
+        const key = cellKey(bestCell);
+        occupancy.set(key, [...(occupancy.get(key) || []), req]);
+    });
+
+    refineCellAssignments(assignments, sorted);
+
+    const rowWeights = [0, 0, 0];
+    const colWeights = [0, 0, 0];
+
+    sorted.forEach((req) => {
+        const cell = assignments.get(req.id)!;
+        rowWeights[cell.row] += req.targetArea;
+        colWeights[cell.col] += req.targetArea;
+    });
+
+    const rowHeights = distributeSpan(plot.height, rowWeights, rowWeights.map((w) => w > 0), 2.4);
+    const colWidths = distributeSpan(plot.width, colWeights, colWeights.map((w) => w > 0), 2.4);
+    const rowY = [0, rowHeights[0], rowHeights[0] + rowHeights[1]];
+    const colX = [0, colWidths[0], colWidths[0] + colWidths[1]];
 
     const placed: LayoutRoom[] = [];
 
-    for (const req of sorted) {
-        const rr = rules.room_rules[req.type] || {};
-        const tryZones = [
-            ...(rr.preferred || []),
-            ...(rr.allowed || []),
-            ...zones
-                .map((z) => z.id)
-                .filter(
-                    (id) => !(rr.preferred || []).includes(id) && !(rr.allowed || []).includes(id)
-                ),
-        ];
+    Array.from(occupancy.entries()).forEach(([key, roomReqs]) => {
+        if (roomReqs.length === 0) return;
 
-        // Compute desired dimensions (aspect ratio 1.4)
-        const ratio = 1.4;
-        const desiredW = Math.sqrt(req.targetArea * ratio);
-        const desiredH = Math.sqrt(req.targetArea / ratio);
+        const [row, col] = key.split('-').map(Number) as [0 | 1 | 2, 0 | 1 | 2];
+        const cellRect: Rect = {
+            x: colX[col],
+            y: rowY[row],
+            width: colWidths[col],
+            height: rowHeights[row],
+        };
 
-        let placedRect: LayoutRoom | null = null;
+        splitRect(cellRect, roomReqs).forEach(({ req, rect }) => {
+            const x = snapToGrid(rect.x);
+            const y = snapToGrid(rect.y);
+            const width = Math.max(1, snapToGrid(rect.width));
+            const height = Math.max(1, snapToGrid(rect.height));
+            const cx = x + width / 2;
+            const cy = y + height / 2;
+            const zone = pickZoneForPoint(zones, cx, cy);
 
-        // Try to place in preferred/allowed zones
-        for (const zid of tryZones) {
-            const frIndex = freeRects.findIndex(
-                (fr) =>
-                    fr.zoneId === zid && fr.w >= desiredW - 1e-6 && fr.h >= desiredH - 1e-6
-            );
-
-            if (frIndex >= 0) {
-                const fr = freeRects[frIndex];
-                const w = Math.min(desiredW, fr.w);
-                const h = Math.min(desiredH, fr.h);
-                const x = fr.x;
-                const y = fr.y;
-
-                placedRect = {
-                    id: req.id,
-                    templateId: `dyn_${req.id}`,
-                    type: req.type,
-                    label: getRoomLabel(req.type),
-                    x,
-                    y,
-                    width: w,
-                    height: h,
-                    zone: zid,
-                    score: 0,
-                    violation: null,
-                };
-
-                // Guillotine split
-                const right: FreeRect = { zoneId: zid, x: x + w, y: y, w: fr.w - w, h: h };
-                const bottom: FreeRect = { zoneId: zid, x: x, y: y + h, w: fr.w, h: fr.h - h };
-
-                freeRects.splice(frIndex, 1);
-                if (right.w > 0.01 && right.h > 0.01) freeRects.push(right);
-                if (bottom.w > 0.01 && bottom.h > 0.01) freeRects.push(bottom);
-                break;
-            }
-        }
-
-        // Fallback: try to fit in any available space with shrink
-        if (!placedRect) {
-            const fallbackIndex = freeRects.findIndex((fr) => fr.w * fr.h >= 0.5 * req.targetArea);
-            if (fallbackIndex >= 0) {
-                const fr = freeRects[fallbackIndex];
-                const area = Math.min(fr.w * fr.h, req.targetArea);
-                const w = Math.min(fr.w, Math.max(1, Math.sqrt(area * ratio)));
-                const h = Math.min(fr.h, Math.max(1, Math.sqrt(area / ratio)));
-                const x = fr.x;
-                const y = fr.y;
-
-                placedRect = {
-                    id: req.id,
-                    templateId: `dyn_${req.id}`,
-                    type: req.type,
-                    label: getRoomLabel(req.type),
-                    x,
-                    y,
-                    width: w,
-                    height: h,
-                    zone: fr.zoneId,
-                    score: 0,
-                    violation: null,
-                };
-
-                freeRects.splice(fallbackIndex, 1);
-            }
-        }
-
-        // Last resort: place in center zone
-        if (!placedRect) {
-            const cZone = zones.find((z) => z.id === 'C')!;
-            const w = Math.min(Math.sqrt(req.targetArea * ratio), cZone.w - 0.1);
-            const h = Math.min(Math.sqrt(req.targetArea / ratio), cZone.h - 0.1);
-            const x = cZone.x + (cZone.w - w) / 2;
-            const y = cZone.y + (cZone.h - h) / 2;
-
-            placedRect = {
+            placed.push({
                 id: req.id,
                 templateId: `dyn_${req.id}`,
                 type: req.type,
                 label: getRoomLabel(req.type),
                 x,
                 y,
-                width: w,
-                height: h,
-                zone: 'C',
+                width,
+                height,
+                zone,
                 score: 0,
                 violation: null,
-            };
-        }
-
-        if (placedRect) placed.push(placedRect);
-    }
+            });
+        });
+    });
 
     return { rooms: placed, zones };
 }
@@ -232,7 +620,7 @@ export function localImprove(
 ): { rooms: LayoutRoom[]; score: { score: number; hardViolation: any } } {
     const rng = mulberry32(seed);
     let best = layoutRooms.map((r) => ({ ...r }));
-    let bestScore = computeLayoutScore(best, rules);
+    const bestScore = computeLayoutScore(best, rules);
 
     if (bestScore.hardViolation) {
         return { rooms: best, score: bestScore };
@@ -301,6 +689,39 @@ export function localImprove(
     return { rooms: best, score: finalReport };
 }
 
+function candidatePenalty(plot: PlotSettings, rooms: LayoutRoom[]) {
+    const plotArea = plot.width * plot.height;
+    const usedArea = rooms.reduce((sum, room) => sum + getRoomArea(room), 0);
+    return Math.max(0, plotArea - usedArea);
+}
+
+function generateCandidateLayout(
+    plot: PlotSettings,
+    roomReqs: RoomReq[],
+    _improveIterations: number,
+    _seed: number
+) {
+    const normalizedReqs = ensureCirculationRooms(roomReqs, plot);
+    const { rooms: initialRooms, zones } = greedyPlaceRooms(plot, normalizedReqs, vastuRules);
+
+    const finalRooms = initialRooms
+        .map((room) => ({
+            ...room,
+            x: snapToGrid(room.x),
+            y: snapToGrid(room.y),
+            width: snapToGrid(room.width),
+            height: snapToGrid(room.height),
+        }))
+        .map(generateFurnitureForRoom);
+
+    return {
+        rooms: finalRooms,
+        zones,
+        score: computeLayoutScore(finalRooms, vastuRules, plot),
+        penalty: candidatePenalty(plot, finalRooms),
+    };
+}
+
 /**
  * Main autolayout function
  */
@@ -309,19 +730,24 @@ export function generateLayout(
     roomReqs: RoomReq[],
     improveIterations = 120,
     seed = 1234
-): { rooms: LayoutRoom[]; compliance: ComplianceReport; zones: Zone[]; walls: any[]; doors: any[] } {
-    const { rooms: initialRooms, zones } = greedyPlaceRooms(plot, roomReqs, vastuRules);
+): { rooms: LayoutRoom[]; compliance: ComplianceReport; zones: Zone[]; walls: Wall[]; doors: Door[] } {
+    const candidateCount = Math.min(8, Math.max(3, roomReqs.length + 1));
+    let bestCandidate = generateCandidateLayout(plot, roomReqs, improveIterations, seed);
 
-    // Set zone field accurately
-    initialRooms.forEach((r) => {
-        const cx = r.x + r.width / 2;
-        const cy = r.y + r.height / 2;
-        r.zone = pickZoneForPoint(zones, cx, cy);
-    });
+    for (let i = 1; i < candidateCount; i++) {
+        const candidate = generateCandidateLayout(plot, roomReqs, improveIterations, seed + i * 97);
+        const isBetter =
+            candidate.score.score > bestCandidate.score.score ||
+            (candidate.score.score === bestCandidate.score.score &&
+                candidate.penalty < bestCandidate.penalty);
 
-    // Improve layout
-    const improved = localImprove(initialRooms, zones, vastuRules, improveIterations, seed);
-    const finalRooms = improved.rooms;
+        if (isBetter) {
+            bestCandidate = candidate;
+        }
+    }
+
+    const finalRooms = bestCandidate.rooms;
+    const zones = bestCandidate.zones;
 
     // Generate Walls and Doors to make it "Template Style"
     const walls = generateWallsFromRooms(finalRooms);
@@ -361,56 +787,50 @@ export function generateLayout(
 /**
  * Generate structural walls from room rectangles
  */
-function generateWallsFromRooms(rooms: LayoutRoom[]): any[] {
-    const segments: { x1: number, y1: number, x2: number, y2: number, isExt: boolean }[] = [];
+function generateWallsFromRooms(rooms: LayoutRoom[]): Wall[] {
+    type Edge = { x1: number; y1: number; x2: number; y2: number; roomIds: Set<string> };
+    const edgeMap = new Map<string, Edge>();
 
-    // Get bounding box of all rooms
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    rooms.forEach(r => {
-        minX = Math.min(minX, r.x);
-        minY = Math.min(minY, r.y);
-        maxX = Math.max(maxX, r.x + r.width);
-        maxY = Math.max(maxY, r.y + r.height);
-    });
-
-    rooms.forEach(r => {
-        const left = r.x;
-        const right = r.x + r.width;
-        const top = r.y;
-        const bottom = r.y + r.height;
+    rooms.forEach((r) => {
+        const left = snapToGrid(r.x);
+        const right = snapToGrid(r.x + r.width);
+        const top = snapToGrid(r.y);
+        const bottom = snapToGrid(r.y + r.height);
 
         const edges = [
-            { x1: left, y1: top, x2: right, y2: top }, // Top
-            { x1: right, y1: top, x2: right, y2: bottom }, // Right
-            { x1: right, y1: bottom, x2: left, y2: bottom }, // Bottom
-            { x1: left, y1: bottom, x2: left, y2: top } // Left
+            { x1: left, y1: top, x2: right, y2: top },
+            { x1: right, y1: top, x2: right, y2: bottom },
+            { x1: right, y1: bottom, x2: left, y2: bottom },
+            { x1: left, y1: bottom, x2: left, y2: top },
         ];
 
-        edges.forEach(e => {
-            // Determine if it's an external segment
-            const isExt = (
-                (Math.abs(e.y1 - minY) < 0.05 && Math.abs(e.y2 - minY) < 0.05) ||
-                (Math.abs(e.x1 - maxX) < 0.05 && Math.abs(e.x2 - maxX) < 0.05) ||
-                (Math.abs(e.y1 - maxY) < 0.05 && Math.abs(e.y2 - maxY) < 0.05) ||
-                (Math.abs(e.x1 - minX) < 0.05 && Math.abs(e.x2 - minX) < 0.05)
-            );
+        edges.forEach((raw) => {
+            const edge = normalizeEdge(raw.x1, raw.y1, raw.x2, raw.y2);
+            const key = edgeKey(edge);
+            const existing = edgeMap.get(key);
 
-            segments.push({ ...e, isExt });
+            if (existing) {
+                existing.roomIds.add(r.id);
+            } else {
+                edgeMap.set(key, { ...edge, roomIds: new Set([r.id]) });
+            }
         });
     });
 
-    // Merge collinear segments (simplified for MVP)
-    const walls: any[] = [];
-    segments.forEach((s, idx) => {
+    let idx = 0;
+    const walls: Wall[] = [];
+    for (const edge of edgeMap.values()) {
+        const isExternal = edge.roomIds.size === 1;
         walls.push({
             id: `dyn-wall-${idx}`,
-            start: { x: s.x1, y: s.y1 },
-            end: { x: s.x2, y: s.y2 },
-            thickness: s.isExt ? 0.23 : 0.115,
-            isExternal: s.isExt,
-            adjacentRooms: []
+            start: { x: edge.x1, y: edge.y1 },
+            end: { x: edge.x2, y: edge.y2 },
+            thickness: isExternal ? 0.23 : 0.115,
+            isExternal,
+            adjacentRooms: Array.from(edge.roomIds),
         });
-    });
+        idx += 1;
+    }
 
     return walls;
 }
@@ -418,36 +838,48 @@ function generateWallsFromRooms(rooms: LayoutRoom[]): any[] {
 /**
  * Generate logical doors for the layout
  */
-function generateDoorsForRooms(rooms: LayoutRoom[], walls: any[]): any[] {
-    const doors: any[] = [];
+function generateDoorsForRooms(_rooms: LayoutRoom[], walls: Wall[]): Door[] {
+    const doors: Door[] = [];
+    const usedWallIds = new Set<string>();
 
-    // Every room should have at least one door to another space or outside
-    rooms.forEach((room, idx) => {
-        // Find a suitable wall
-        const wallIdx = walls.findIndex(w => {
-            // Check if wall is on the boundary of this room
-            const dx = Math.min(
-                Math.abs(w.start.x - room.x),
-                Math.abs(w.end.x - (room.x + room.width))
-            );
-            const dy = Math.min(
-                Math.abs(w.start.y - room.y),
-                Math.abs(w.end.y - (room.y + room.height))
-            );
-            return dx < 0.1 || dy < 0.1;
+    const internalWalls = walls.filter((w) => w.adjacentRooms.length > 1);
+
+    internalWalls.forEach((wall, idx) => {
+        const length = wallLength(wall);
+        if (length < 0.9) return;
+
+        doors.push({
+            id: `dyn-door-${idx}`,
+            wallId: wall.id,
+            position: 0.5,
+            width: Math.min(0.9, length - 0.1),
+            swingAngle: 90,
+            swingDirection: length > 1.5 ? 'left' : 'right',
         });
+        usedWallIds.add(wall.id);
+    });
 
-        if (wallIdx >= 0) {
+    const needsEntrance = !doors.some((door) => {
+        const wall = walls.find((w) => w.id === door.wallId);
+        return wall?.isExternal;
+    });
+
+    if (needsEntrance) {
+        const entranceWall = walls.find(
+            (wall) => wall.isExternal && wallLength(wall) >= 0.9
+        );
+
+        if (entranceWall) {
             doors.push({
-                id: `dyn-door-${idx}`,
-                wallId: walls[wallIdx].id,
+                id: `dyn-door-ext`,
+                wallId: entranceWall.id,
                 position: 0.5,
-                width: room.type === 'living_room' ? 1.2 : 0.9,
+                width: Math.min(0.9, wallLength(entranceWall) - 0.1),
                 swingAngle: 90,
-                swingDirection: 'left'
+                swingDirection: 'right',
             });
         }
-    });
+    }
 
     return doors;
 }

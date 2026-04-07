@@ -2,14 +2,12 @@
 // DOM-based interactive plan for cleaner "blueprint" aesthetics
 // Replaces Canvas for users who prefer HTML/CSS rendering
 
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStore } from '../store/useStore';
 import { getRoomLabel } from '../utils/vastuUtils';
-import { getRoomColor } from '../utils/vastuUtils';
 
 export function PlanHTML() {
-    const { plot, rooms, updateRoom, selectRoom, selectedRoomId, editMode, setStageRef } = useStore();
-    const containerRef = useRef<HTMLDivElement>(null);
+    const { plot, rooms, updateRoom, selectRoom, selectedRoomId, editMode } = useStore();
     const [draggingInfo, setDraggingInfo] = useState<{ id: string; startX: number; startY: number; initialRoomX: number; initialRoomY: number } | null>(null);
 
     // Canvas dimensions (internal logical size)
@@ -28,9 +26,7 @@ export function PlanHTML() {
         e.stopPropagation();
         selectRoom(roomId);
 
-        // Only allow drag in interactive mode or if we decide blueprint is editable
-        // The user wants "layout plan like this", usually static-ish, but let's allow edit.
-        if (editMode === 'creative' || true) {
+        if (editMode === 'creative') {
             setDraggingInfo({
                 id: roomId,
                 startX: e.clientX,
@@ -72,11 +68,8 @@ export function PlanHTML() {
     useEffect(() => {
         // We could potentially polyfill a "stageRef" that has toDataURL using html2canvas if needed
         // For now, allow it to be null
-        // setStageRef(null); 
+        // setStageRef(null);
     }, []);
-
-    // Blueprint Style Helpers
-    const isBlueprint = true; // Always force blueprint look since user requested "like that" image
 
     return (
         <div className="bg-white rounded-lg shadow-lg p-6 border border-gray-200 select-none">
@@ -154,7 +147,7 @@ export function PlanHTML() {
                                 {room.customLabel || getRoomLabel(room.type)}
                             </span>
                             <span className="text-[10px] font-medium text-gray-800 pointer-events-none mt-1" style={{ fontFamily: 'monospace' }}>
-                                {Math.round(room.width * 2)}'-0" × {Math.round(room.height * 2)}'-0"
+                                {`${Math.round(room.width * 2)}'-0" × ${Math.round(room.height * 2)}'-0"`}
                             </span>
 
                             {/* Corner markers (Architectural style) - darker */}

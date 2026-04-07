@@ -2,7 +2,7 @@
 // Adaptive fitting of templates to plots (NOT scaling/distortion)
 
 import type { PlanTemplate, PlotSettings, Room, Wall, ZoneId, Point, Rect } from '../types';
-import { extractBuiltEnvelope, scaleEnvelope, getEnvelopeCenter } from '../geometry/envelope';
+import { extractBuiltEnvelope, scaleEnvelope } from '../geometry/envelope';
 import { computeZones, pickZoneForPoint } from './zoneUtils';
 import { calculateRoomVastuScore } from './vastuUtils';
 

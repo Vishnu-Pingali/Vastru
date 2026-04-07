@@ -78,6 +78,13 @@ export interface Furniture {
     rotation: number;
 }
 
+export interface ExportableStage {
+    toDataURL: (config?: {
+        pixelRatio?: number;
+        mimeType?: string;
+    }) => string;
+}
+
 // Anchor point for room resizing
 export type AnchorPoint = 'nw' | 'ne' | 'sw' | 'se' | 'center';
 

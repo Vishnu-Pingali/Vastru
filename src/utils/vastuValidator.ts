@@ -1,8 +1,8 @@
 // utils/vastuValidator.ts
 // Vastu validation for template-driven layouts
 
-import type { Room, PlanTemplate, ZoneId, RoomType } from '../types';
-import { calculateRoomVastuScore, getRoomLabel } from './vastuUtils';
+import type { Room, PlanTemplate, ZoneId } from '../types';
+import { calculateRoomVastuScore } from './vastuUtils';
 
 export interface VastuViolation {
     roomId: string;

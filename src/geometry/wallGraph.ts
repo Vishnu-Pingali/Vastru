@@ -1,7 +1,7 @@
 // geometry/wallGraph.ts
 // Wall topology and connectivity management
 
-import type { Wall, Point, RuntimeWall } from '../types';
+import type { Wall, Point } from '../types';
 
 /**
  * Calculate distance from point to line segment

@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -6,30 +6,33 @@
 
 @layer utilities {
   .glass {
-    @apply bg-white/10 backdrop-blur-md border border-white/20 shadow-xl;
+    background: rgba(245, 238, 216, 0.9);
+    @apply backdrop-blur-md border border-[#d6c8a6] shadow-[0_16px_40px_rgba(91,80,48,0.08)];
   }
 
   .glass-dark {
-    @apply bg-black/40 backdrop-blur-xl border border-white/10 shadow-2xl;
+    background: rgba(233, 223, 200, 0.95);
+    @apply backdrop-blur-xl border border-[#d6c8a6] shadow-[0_18px_48px_rgba(91,80,48,0.1)];
   }
 
   .glass-card {
-    @apply bg-white/5 backdrop-blur-lg border border-white/10 rounded-2xl shadow-xl transition-all duration-300 hover:-translate-y-1 hover:shadow-2xl hover:bg-white/10;
+    background: rgba(243, 234, 211, 0.92);
+    @apply backdrop-blur-lg border border-[#d8cab0] rounded-[24px] shadow-[0_20px_60px_rgba(91,80,48,0.08)] transition-all duration-300;
   }
 
   .text-glow {
-    text-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+    text-shadow: 0 0 10px rgba(20, 109, 113, 0.18);
   }
 }
 
 :root {
-  font-family: 'Outfit', 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: 'Outfit', 'IBM Plex Sans', system-ui, sans-serif;
   line-height: 1.5;
   font-weight: 400;
 
-  color-scheme: dark;
-  color: #F8FAFC;
-  background-color: #0F172A;
+  color-scheme: light;
+  color: #4f4428;
+  background-color: #e8decb;
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -41,7 +44,10 @@ body {
   margin: 0;
   padding: 0;
   min-height: 100vh;
-  background: radial-gradient(circle at top right, #1E1B4B, #0F172A 40%, #020617 100%);
+  background:
+    radial-gradient(circle at top left, rgba(255, 248, 225, 0.7), transparent 28%),
+    radial-gradient(circle at bottom right, rgba(207, 196, 164, 0.65), transparent 24%),
+    linear-gradient(135deg, #e8decb 0%, #ddd2bb 48%, #d7ccb6 100%);
   background-attachment: fixed;
 }
 
@@ -56,12 +62,12 @@ body {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(138, 123, 83, 0.35);
   border-radius: 10px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.4);
+  background: rgba(138, 123, 83, 0.55);
 }
 
 /* Typography modern */
@@ -72,6 +78,7 @@ h4,
 h5,
 h6 {
   font-family: 'Outfit', sans-serif;
+  color: #4f4428;
 }
 
 /* Smooth transitions */

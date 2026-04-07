@@ -2,8 +2,7 @@
 // Export utilities for PNG, PDF, and JSON
 
 import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
-import type Konva from 'konva';
-import type { ProjectState, Room, ComplianceReport } from '../types';
+import type { ProjectState, ComplianceReport, ExportableStage } from '../types';
 import { getRoomLabel, getComplianceStatus } from './vastuUtils';
 import { getZoneLabel } from './zoneUtils';
 
@@ -11,7 +10,7 @@ import { getZoneLabel } from './zoneUtils';
  * Export canvas as PNG image
  */
 export async function exportPNG(
-    stageRef: React.RefObject<Konva.Stage>,
+    stageRef: React.RefObject<ExportableStage>,
     filename = 'vastu-plan.png'
 ): Promise<void> {
     if (!stageRef.current) {
@@ -39,7 +38,7 @@ export async function exportPNG(
  * Export project as PDF with details
  */
 export async function exportPDF(
-    stageRef: React.RefObject<Konva.Stage>,
+    stageRef: React.RefObject<ExportableStage>,
     projectState: ProjectState,
     compliance: ComplianceReport,
     filename = 'vastu-plan.pdf'
@@ -50,7 +49,7 @@ export async function exportPDF(
 
     // Create PDF document
     const pdfDoc = await PDFDocument.create();
-    const page = pdfDoc.addPage([595, 842]); // A4 size
+    let page = pdfDoc.addPage([595, 842]); // A4 size
     const { width, height } = page.getSize();
 
     // Embed fonts
@@ -157,7 +156,7 @@ export async function exportPDF(
     for (const room of projectState.rooms) {
         if (yPosition < 100) {
             // Add new page if running out of space
-            const newPage = pdfDoc.addPage([595, 842]);
+            page = pdfDoc.addPage([595, 842]);
             yPosition = height - 50;
         }
 
@@ -197,7 +196,7 @@ export async function exportPDF(
         const imageX = (width - imageDims.width) / 2;
 
         if (yPosition - imageDims.height < 50) {
-            const newPage = pdfDoc.addPage([595, 842]);
+            page = pdfDoc.addPage([595, 842]);
             yPosition = height - 50;
         }
 

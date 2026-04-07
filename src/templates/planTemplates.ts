@@ -1,7 +1,7 @@
 // templates/planTemplates.ts
 // Professional civil plan templates with proper wall topology
 
-import type { PlanTemplate, Wall, RoomTemplate, Door } from '../types';
+import type { PlanTemplate, Wall } from '../types';
 
 // ==================== HELPER FUNCTIONS ====================
 

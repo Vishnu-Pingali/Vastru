@@ -161,6 +161,38 @@ Vastru/
 
 ---
 
+## 🧠 HouseDiffusion Integration
+This repository now includes a HouseDiffusion adapter layer that converts natural text into a graph, then prepares the graph for a HouseDiffusion model pipeline.
+
+- `src/utils/houseDiffusion.ts` parses requests like `"3BHK with kitchen near living room"` and builds a graph schema.
+- `backend/house_diffusion_api.py` is a FastAPI wrapper that writes graph JSON and invokes the HouseDiffusion sample script.
+
+### Setup notes
+1. Clone the HouseDiffusion repo into the workspace root or update paths in `backend/house_diffusion_api.py`.
+2. Install Python dependencies inside the HouseDiffusion repo:
+   ```bash
+   git clone https://github.com/aminshabani/house_diffusion.git
+   cd house_diffusion
+   pip install -r requirements.txt
+   pip install -e .
+   ```
+3. Download the checkpoint and place it at:
+   `house_diffusion/scripts/ckpts/exp/model250000.pt`
+4. Run the FastAPI wrapper:
+   ```bash
+   uvicorn backend.house_diffusion_api:app --reload
+   ```
+
+### Expected flow
+- Text → room requests
+- Room requests → graph with nodes/edges
+- Graph saved as JSON
+- Python model script invoked via `subprocess`
+
+> Note: HouseDiffusion itself does not accept raw text. This repo now includes the bridge logic that converts text to the required graph format.
+
+---
+
 ## 🛡️ License
 This project is licensed under the MIT License - see the LICENSE file for details.
 

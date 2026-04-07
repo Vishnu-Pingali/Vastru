@@ -3,7 +3,6 @@
 
 import { create } from 'zustand';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import type Konva from 'konva';
 import type {
     Room,
     PlotSettings,
@@ -13,6 +12,7 @@ import type {
     PlanTemplate,
     Wall,
     EditMode,
+    ExportableStage,
 } from '../types';
 import { computeZones, pickZoneForPoint } from '../utils/zoneUtils';
 import { calculateComplianceReport } from '../utils/vastuUtils';
@@ -29,7 +29,7 @@ interface StoreState {
     walls: Wall[];
     vastuMode: VastuMode;
     editMode: EditMode;
-    stageRef: React.RefObject<Konva.Stage> | null;
+    stageRef: React.RefObject<ExportableStage> | null;
     complianceReport: ComplianceReport;
 
     // UI state
@@ -44,7 +44,7 @@ interface StoreState {
     setPlotSize: (width: number, height: number) => void;
     setOrientation: (orientation: number) => void;
     setVastuMode: (mode: VastuMode) => void;
-    setStageRef: (ref: React.RefObject<Konva.Stage>) => void;
+    setStageRef: (ref: React.RefObject<ExportableStage>) => void;
 
     updateRoom: (id: string, updates: Partial<Room>) => void;
     selectRoom: (id: string | null) => void;
@@ -123,126 +123,162 @@ export const useStore = create<StoreState>((set, get) => ({
         showToastMessage('🤖 Generating AI Layout...');
 
         try {
-            // Define API key directly or prompt user (using a placeholder or import.meta.env)
-            // @ts-ignore
+            // Try AI generation with Gemini
+            // @ts-expect-error: environment variable may be undefined in browser build
             const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-            if (!apiKey) throw new Error("Gemini API key is required to generate AI layouts.");
+            
+            if (apiKey) {
+                try {
+                    const genAI = new GoogleGenerativeAI(apiKey);
+                    // Using gemini-1.5-flash which is reliable and fast
+                    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
 
-            const genAI = new GoogleGenerativeAI(apiKey);
-            const model = genAI.getGenerativeModel({ model: "gemini-flash-latest" });
+                    const promptText = `
+You are an expert Vastu Shastra architect and floor plan designer. Generate ONLY valid JSON (no markdown blocks) for a floor plan.
 
-            const promptText = `
-                You are an expert Vastu Shastra architect and floor plan designer. I need a JSON structure for a complete, solid, monolithic floor plan based on these constraints:
-                Plot: ${plot.width}m x ${plot.height}m, facing ${plot.orientation} degrees.
-                Rooms required: ${JSON.stringify(roomReqs)}
-                
-                CRITICAL ARCHITECTURAL RULES:
-                1. SOLID FOOTPRINT: Design a single rectangular building (e.g. 10x8) starting exactly at (x:0, y:0).
-                2. NO GAPS: Rooms MUST pack perfectly into this building footprint like a jigsaw puzzle. There MUST NOT be any empty space or corridors between rooms.
-                3. GRID SNAPPING: All x, y, width, and height values MUST be whole numbers or end in .5 (e.g., 2, 3.5, 4).
-                4. WALL ENCLOSURE: Generate walls that trace every single external border of the building layout AND the interior borders between rooms. Ensure no walls intersect incorrectly.
-                5. VASTU COMPLIANCE: Place Master Bedroom in SW, Kitchen in SE, etc., but respect the contiguous puzzle-layout rule above all.
-                
-                Respond ONLY with valid JSON in this exact format:
-                {
-                    "score": 85,
-                    "rooms": [
-                        { "id": "room_id", "label": "Label", "type": "master_bedroom", "x": 0, "y": 0, "width": 4, "height": 4, "zone": "SW", "score": 100, "violation": null }
-                    ],
-                    "walls": [
-                        { "id": "w1", "start": {"x":0, "y":0}, "end": {"x":4, "y":0}, "thickness": 0.23, "isExternal": true, "adjacentRooms": [] }
-                    ],
-                    "doors": [
-                        { "id": "d1", "wallId": "w1", "position": 0.5, "width": 0.9, "swingAngle": 90, "swingDirection": "left" }
-                    ]
+Plot: ${plot.width}m x ${plot.height}m, facing ${plot.orientation}°
+Rooms: ${JSON.stringify(roomReqs.map(r => ({ type: r.type, area: r.targetArea })))}
+
+REQUIREMENTS:
+1. Design rooms packed in a rectangular footprint starting at (0,0)
+2. NO empty gaps between rooms - they must fit like a puzzle
+3. All coordinates: whole numbers or .5 increments (e.g., 2, 3.5)
+4. Vastu rules: Master Bedroom SW, Kitchen SE, Living NE, Puja NW
+5. Return ONLY this JSON structure, no markdown:
+
+{"score": 85, "rooms": [{"id": "r1", "label": "Room", "type": "master_bedroom", "x": 0, "y": 0, "width": 4, "height": 4, "zone": "SW", "score": 100, "violation": null}], "walls": [{"id": "w1", "start": {"x": 0, "y": 0}, "end": {"x": 4, "y": 0}, "thickness": 0.23, "isExternal": true, "adjacentRooms": []}], "doors": [{"id": "d1", "wallId": "w1", "position": 0.5, "width": 0.9, "swingAngle": 90, "swingDirection": "left"}]}`;
+
+                    const result = await model.generateContent(promptText);
+                    const responseText = result.response.text().trim();
+                    
+                    // Clean JSON response
+                    const cleanedJsonText = responseText
+                        .replace(/```json/gi, '')
+                        .replace(/```/g, '')
+                        .replace(/^[\s\S]*?{/, '{')
+                        .replace(/}[\s\S]*?$/, '}')
+                        .trim();
+                    
+                    console.log("Gemini Response:", cleanedJsonText);
+
+                    const plan = JSON.parse(cleanedJsonText);
+                    
+                    // Validate plan structure
+                    if (!plan.rooms || !Array.isArray(plan.rooms) || plan.rooms.length === 0) {
+                        throw new Error('Invalid plan structure from AI');
+                    }
+
+                    const syntheticTemplate: PlanTemplate = {
+                        id: 'ai-template',
+                        name: '🏠 AI Generated',
+                        facing: 'E',
+                        baseEnvelope: { width: plot.width, height: plot.height },
+                        description: 'AI-generated Vastu floor plan',
+                        floors: 1,
+                        bedrooms: roomReqs.filter(r => r.type.includes('bedroom')).length,
+                        walls: plan.walls || [],
+                        rooms: plan.rooms.map((r: any) => ({
+                            id: r.id,
+                            label: r.label,
+                            type: r.type,
+                            rect: { x: r.x, y: r.y, width: r.width, height: r.height },
+                            zoneIntent: [r.zone || 'C'],
+                            anchor: 'center',
+                            minSize: { width: 1, height: 1 },
+                            maxSize: { width: 20, height: 20 },
+                            wallIds: []
+                        })),
+                        doors: plan.doors || []
+                    };
+
+                    // Ensure rooms have all required properties
+                    const roomsWithTemplate = plan.rooms.map((r: any) => ({
+                        ...r,
+                        templateId: 'ai-template',
+                        zone: r.zone || 'C'
+                    }));
+
+                    set({
+                        rooms: roomsWithTemplate,
+                        walls: plan.walls || [],
+                        activeTemplate: syntheticTemplate,
+                        complianceReport: {
+                            totalScore: plan.score || 75,
+                            roomScores: plan.rooms.map((r: any) => ({
+                                id: r.id,
+                                type: r.type,
+                                zone: r.zone,
+                                score: r.score || 80,
+                                violation: r.violation
+                            })),
+                            hardViolations: (plan.rooms || [])
+                                .filter((r: any) => r.violation === 'forbidden')
+                                .map((r: any) => ({ roomId: r.id, reason: 'Vastu Violation' }))
+                        },
+                        selectedRoomId: null,
+                        selectedWallId: null,
+                        editMode: 'creative'
+                    });
+
+                    showToastMessage('✨ AI Plan Generated!');
+                    return;
+                } catch (aiError) {
+                    console.warn('AI generation failed, using local generator:', aiError);
                 }
-                Make sure the walls completely enclose the rooms. Do NOT include markdown code blocks, just raw JSON.`;
-            const result = await model.generateContent(promptText);
-            const responseText = result.response.text().trim();
-            // Remove markdown format if it wrapped it
-            const cleanedJsonText = responseText.replace(/```json/i, '').replace(/```/g, '').trim();
-            console.log("Raw Gemini Response:", cleanedJsonText);
-
-            let plan;
-            try {
-                plan = JSON.parse(cleanedJsonText);
-            } catch (e) {
-                console.error("Failed to parse Gemini JSON", e);
-                throw new Error("Gemini returned invalid JSON format.");
             }
-            // Create a synthetic template from Gemini AI plan
+        } catch (error: any) {
+            console.error('API setup error:', error);
+        }
+
+        // Fallback: Always use local JS generation
+        console.log('Using local layout generator...');
+        try {
+            const { rooms, compliance, walls, doors } = generateLayout(plot, roomReqs);
+
+            // Ensure rooms have all required properties
+            const roomsWithTemplate = rooms.map(r => ({
+                ...r,
+                templateId: 'local-template',
+                zone: r.zone || 'C'
+            }));
+
             const syntheticTemplate: PlanTemplate = {
-                id: 'ai-template',
-                name: '🏠 Dynamic AI - CAD Plan',
+                id: 'local-template',
+                name: '⚙️ Smart Layout (Local)',
                 facing: 'E',
                 baseEnvelope: { width: plot.width, height: plot.height },
-                description: 'AI-generated architectural layout',
+                description: 'Vastu-optimized local layout',
                 floors: 1,
-                bedrooms: roomReqs.filter(r => r.type === 'master_bedroom' || r.type === 'bedroom').length,
-                walls: plan.walls,
-                rooms: plan.rooms.map((r: any) => ({
+                bedrooms: roomReqs.filter(r => r.type.includes('bedroom')).length,
+                walls,
+                rooms: roomsWithTemplate.map(r => ({
                     id: r.id,
                     label: r.label,
                     type: r.type,
                     rect: { x: r.x, y: r.y, width: r.width, height: r.height },
-                    zoneIntent: [],
+                    zoneIntent: [r.zone || 'C'],
                     anchor: 'center',
                     minSize: { width: 1, height: 1 },
-                    maxSize: { width: 10, height: 10 },
+                    maxSize: { width: 20, height: 20 },
                     wallIds: []
                 })),
-                doors: plan.doors
+                doors: doors || []
             };
 
             set({
-                rooms: plan.rooms,
-                walls: plan.walls,
+                rooms: roomsWithTemplate,
+                walls: walls || [],
                 activeTemplate: syntheticTemplate,
-                complianceReport: {
-                    totalScore: plan.score,
-                    roomScores: plan.rooms.map((r: any) => ({
-                        id: r.id,
-                        type: r.type,
-                        zone: r.zone,
-                        score: r.score,
-                        violation: r.violation
-                    })),
-                    hardViolations: plan.rooms
-                        .filter((r: any) => r.violation === 'forbidden')
-                        .map((r: any) => ({ roomId: r.id, reason: 'Vastu Violation' }))
-                },
+                complianceReport: compliance,
                 selectedRoomId: null,
                 selectedWallId: null,
                 editMode: 'creative'
             });
 
-            showToastMessage('✨ AI Plan Generated!');
-        } catch (error: any) {
-            console.error('AI Generator Error:', error);
-
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            console.warn(`AI Generation failed, falling back to local layout: ${errorMessage}`);
-
-            // Fallback to local JS generation if Python fails
-            const { rooms, compliance, walls, doors } = generateLayout(plot, roomReqs);
-            // ... (rest of local fallback same as before)
-            set({
-                rooms,
-                walls,
-                activeTemplate: {
-                    id: 'fallback-template',
-                    name: 'Local fallback',
-                    facing: 'E',
-                    baseEnvelope: { width: plot.width, height: plot.height },
-                    description: 'Local JS generator',
-                    floors: 1,
-                    bedrooms: 2,
-                    walls,
-                    rooms,
-                    doors
-                } as any,
-                complianceReport: compliance
-            });
+            showToastMessage('✅ Layout Generated (Local)');
+        } catch (fallbackError) {
+            console.error('Local layout generation failed:', fallbackError);
+            showToastMessage('❌ Layout generation failed');
         }
     },
 
